@@ -10,6 +10,8 @@ type Props = {
   timerEndsAt: number | null;
   dayVotes: Record<string, number>;
   myDayVote: string | null;
+  narration: string | null;
+  detectiveResult: { targetName: string; isMafia: boolean } | null;
   onDayVote: (targetId: string) => void;
 };
 
@@ -22,6 +24,8 @@ export default function DayPhase({
   timerEndsAt,
   dayVotes,
   myDayVote,
+  narration,
+  detectiveResult,
   onDayVote,
 }: Props) {
   const countdown = useCountdown(timerEndsAt);
@@ -37,13 +41,10 @@ export default function DayPhase({
     countdown > 20 ? "text-gray-400" : countdown > 8 ? "text-amber-400" : "text-red-400";
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center px-4 py-10"
-      style={{ background: "#120e08" }}
-    >
+    <div className="min-h-screen flex flex-col items-center px-4 py-10" style={{ background: "#120e08" }}>
       <div className="w-full max-w-sm">
 
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <span className="text-xl">☀️</span>
             <div>
@@ -60,8 +61,34 @@ export default function DayPhase({
           </div>
         </div>
 
+        {/* Narration banner — public, shown at start of day */}
+        {narration && !isVoting && (
+          <div className="mb-4 px-4 py-3 rounded-xl bg-gray-900/70 border border-gray-700">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-1">Last Night</p>
+            <p className="text-gray-200 text-sm leading-relaxed">{narration}</p>
+          </div>
+        )}
+
+        {/* Detective result — private, only visible to detective */}
+        {detectiveResult && !isVoting && (
+          <div className="mb-4 px-4 py-3 rounded-xl bg-amber-950/30 border border-amber-700/40">
+            <p className="text-xs font-semibold text-amber-500 uppercase tracking-widest mb-1">
+              🔍 Your investigation
+            </p>
+            <p className="text-amber-100 text-sm leading-relaxed">
+              <span className="font-semibold">{detectiveResult.targetName}</span>{" "}
+              {detectiveResult.isMafia ? (
+                <span className="text-red-400 font-semibold">is Mafia.</span>
+              ) : (
+                <span className="text-emerald-400 font-semibold">is not Mafia.</span>
+              )}
+            </p>
+            <p className="text-amber-800 text-xs mt-1">Only you can see this.</p>
+          </div>
+        )}
+
         {!amAlive && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl px-4 py-3 mb-5 text-center">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl px-4 py-3 mb-4 text-center">
             <p className="text-gray-500 text-sm">You're eliminated — watching.</p>
           </div>
         )}
@@ -69,12 +96,6 @@ export default function DayPhase({
         {!isVoting ? (
           /* Discussion view */
           <div className="flex flex-col gap-3">
-            <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl px-4 py-4 mb-2 text-center">
-              <p className="text-amber-200/70 text-sm leading-relaxed">
-                Discuss who you think the Mafia is. Voting starts when the timer ends.
-              </p>
-            </div>
-
             <div>
               <p className="text-xs text-gray-600 uppercase tracking-widest mb-3 font-medium">
                 Players alive ({livingPlayers.length})
@@ -86,7 +107,7 @@ export default function DayPhase({
                   return (
                     <div
                       key={player.id}
-                      className={`flex items-center gap-3 min-h-[52px] px-4 rounded-xl border transition-opacity ${
+                      className={`flex items-center gap-3 min-h-[52px] px-4 rounded-xl border ${
                         player.alive ? "bg-gray-900/60 border-gray-800" : "bg-gray-950 border-gray-900 opacity-30"
                       }`}
                     >
@@ -111,9 +132,7 @@ export default function DayPhase({
           /* Voting view */
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-xs text-gray-600 uppercase tracking-widest font-medium">
-                Cast your vote
-              </p>
+              <p className="text-xs text-gray-600 uppercase tracking-widest font-medium">Cast your vote</p>
               {totalVotes > 0 && (
                 <p className="text-xs text-gray-600 font-mono">
                   {totalVotes} vote{totalVotes !== 1 ? "s" : ""} cast
@@ -122,24 +141,22 @@ export default function DayPhase({
             </div>
 
             {!amAlive ? (
-              <div className="flex flex-col gap-2">
-                {votableTargets.map((player) => {
-                  const count = dayVotes[player.id] ?? 0;
-                  const pct = totalVotes > 0 ? (count / totalVotes) * 100 : 0;
-                  return (
-                    <div key={player.id} className="flex items-center gap-3 min-h-[48px] px-4 py-2 rounded-xl bg-gray-900/60 border border-gray-800">
-                      <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-300 flex-shrink-0">
-                        {player.name.charAt(0).toUpperCase()}
-                      </div>
-                      <span className="text-white text-sm font-medium w-20 truncate">{player.name}</span>
-                      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-amber-600 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
-                      </div>
-                      <span className="text-gray-500 text-xs font-mono w-4 text-right">{count}</span>
+              votableTargets.map((player) => {
+                const count = dayVotes[player.id] ?? 0;
+                const pct = totalVotes > 0 ? (count / totalVotes) * 100 : 0;
+                return (
+                  <div key={player.id} className="flex items-center gap-3 min-h-[48px] px-4 py-2 rounded-xl bg-gray-900/60 border border-gray-800">
+                    <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-300 flex-shrink-0">
+                      {player.name.charAt(0).toUpperCase()}
                     </div>
-                  );
-                })}
-              </div>
+                    <span className="text-white text-sm font-medium w-20 truncate">{player.name}</span>
+                    <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-amber-600 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-gray-500 text-xs font-mono w-4 text-right">{count}</span>
+                  </div>
+                );
+              })
             ) : (
               votableTargets.map((player) => {
                 const voteCount = dayVotes[player.id] ?? 0;
@@ -156,7 +173,6 @@ export default function DayPhase({
                         : "bg-gray-900/60 border-gray-800 hover:border-gray-600"
                     }`}
                   >
-                    {/* Vote bar fill */}
                     {pct > 0 && (
                       <div
                         className="absolute inset-0 bg-amber-600/8 transition-all duration-500"

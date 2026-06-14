@@ -10,7 +10,7 @@ import EliminationReveal from "@/pages/EliminationReveal";
 import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
 
-export type Role = "mafia" | "civilian";
+export type Role = "mafia" | "civilian" | "doctor" | "detective";
 
 export type Player = {
   id: string;
@@ -32,35 +32,6 @@ export type GamePhase =
   | "day-result"
   | "game-over";
 
-function resetGameState(set: {
-  setPhase: (p: GamePhase) => void;
-  setMyRole: (r: Role | null) => void;
-  setMafiaNames: (n: string[]) => void;
-  setMafiaIds: (n: string[]) => void;
-  setTimerEndsAt: (t: number | null) => void;
-  setNightVoteStatus: (s: { voted: number; total: number }) => void;
-  setMyNightVote: (v: string | null) => void;
-  setDayVotes: (v: Record<string, number>) => void;
-  setMyDayVote: (v: string | null) => void;
-  setElimInfo: (e: null) => void;
-  setWinner: (w: null) => void;
-  setGameOverPlayers: (p: Player[]) => void;
-  phase: GamePhase;
-}) {
-  set.setMyRole(null);
-  set.setMafiaNames([]);
-  set.setMafiaIds([]);
-  set.setTimerEndsAt(null);
-  set.setNightVoteStatus({ voted: 0, total: 0 });
-  set.setMyNightVote(null);
-  set.setDayVotes({});
-  set.setMyDayVote(null);
-  set.setElimInfo(null);
-  set.setWinner(null);
-  set.setGameOverPlayers([]);
-  set.setPhase("lobby");
-}
-
 export default function App() {
   const socketRef = useRef<Socket | null>(null);
   const { toast } = useToast();
@@ -79,8 +50,17 @@ export default function App() {
   const [timerEndsAt, setTimerEndsAt] = useState<number | null>(null);
   const [nightVoteStatus, setNightVoteStatus] = useState({ voted: 0, total: 0 });
   const [myNightVote, setMyNightVote] = useState<string | null>(null);
+  const [myDoctorVote, setMyDoctorVote] = useState<string | null>(null);
+  const [myDetectiveVote, setMyDetectiveVote] = useState<string | null>(null);
+
   const [dayVotes, setDayVotes] = useState<Record<string, number>>({});
   const [myDayVote, setMyDayVote] = useState<string | null>(null);
+
+  const [dayNarration, setDayNarration] = useState<string | null>(null);
+  const [detectiveResult, setDetectiveResult] = useState<{
+    targetName: string;
+    isMafia: boolean;
+  } | null>(null);
 
   const [elimInfo, setElimInfo] = useState<{
     name: string | null;
@@ -92,11 +72,27 @@ export default function App() {
   const [winner, setWinner] = useState<"mafia" | "civilians" | null>(null);
   const [gameOverPlayers, setGameOverPlayers] = useState<Player[]>([]);
 
-  const stateSetters = {
-    setPhase, setMyRole, setMafiaNames, setMafiaIds, setTimerEndsAt,
-    setNightVoteStatus, setMyNightVote, setDayVotes, setMyDayVote,
-    setElimInfo, setWinner, setGameOverPlayers, phase,
-  };
+  function resetForLobby(newPlayers: Player[], socketId: string) {
+    setPlayers(newPlayers);
+    const me = newPlayers.find((p) => p.id === socketId);
+    if (me) setIsHost(me.isHost);
+    setMyRole(null);
+    setMafiaNames([]);
+    setMafiaIds([]);
+    setTimerEndsAt(null);
+    setNightVoteStatus({ voted: 0, total: 0 });
+    setMyNightVote(null);
+    setMyDoctorVote(null);
+    setMyDetectiveVote(null);
+    setDayVotes({});
+    setMyDayVote(null);
+    setDayNarration(null);
+    setDetectiveResult(null);
+    setElimInfo(null);
+    setWinner(null);
+    setGameOverPlayers([]);
+    setPhase("lobby");
+  }
 
   useEffect(() => {
     const socket = io({ path: "/socket.io" });
@@ -120,7 +116,6 @@ export default function App() {
 
     socket.on("players-updated", (data: { players: Player[] }) => {
       setPlayers(data.players);
-      // Update isHost in case it transferred
       const me = data.players.find((p) => p.id === socket.id);
       if (me) setIsHost(me.isHost);
     });
@@ -140,13 +135,24 @@ export default function App() {
 
     socket.on(
       "game-phase",
-      (data: { phase: GamePhase; endsAt: number; players: Player[]; votes?: Record<string, number> }) => {
+      (data: { phase: GamePhase; endsAt: number; players: Player[]; votes?: Record<string, number>; narration?: string }) => {
         setPhase(data.phase);
         setPlayers(data.players);
         setTimerEndsAt(data.endsAt);
-        if (data.phase === "night") setMyNightVote(null);
-        if (data.phase === "day-vote") { setDayVotes(data.votes ?? {}); setMyDayVote(null); }
-        if (data.phase === "day-discussion") setDayVotes({});
+        if (data.phase === "night") {
+          setMyNightVote(null);
+          setMyDoctorVote(null);
+          setMyDetectiveVote(null);
+          setDetectiveResult(null);
+        }
+        if (data.phase === "day-vote") {
+          setDayVotes(data.votes ?? {});
+          setMyDayVote(null);
+        }
+        if (data.phase === "day-discussion") {
+          setDayVotes({});
+          setDayNarration(data.narration ?? null);
+        }
       },
     );
 
@@ -158,13 +164,24 @@ export default function App() {
         setIsHost(data.isHost);
         setTimerEndsAt(data.endsAt);
         setPhase(data.phase);
-        // role-assigned event follows separately
         toast({ title: "Reconnected", description: "You've rejoined the game." });
       },
     );
 
     socket.on("night-vote-status", (data: { voted: number; total: number }) => {
       setNightVoteStatus(data);
+    });
+
+    socket.on("doctor-protect-ack", (data: { targetId: string }) => {
+      setMyDoctorVote(data.targetId);
+    });
+
+    socket.on("detective-investigate-ack", (data: { targetId: string }) => {
+      setMyDetectiveVote(data.targetId);
+    });
+
+    socket.on("detective-result", (data: { targetName: string; isMafia: boolean }) => {
+      setDetectiveResult(data);
     });
 
     socket.on("day-vote-update", (data: { votes: Record<string, number> }) => {
@@ -196,10 +213,7 @@ export default function App() {
     });
 
     socket.on("room-reset", (data: { players: Player[] }) => {
-      setPlayers(data.players);
-      const me = data.players.find((p) => p.id === socket.id);
-      if (me) setIsHost(me.isHost);
-      resetGameState(stateSetters);
+      resetForLobby(data.players, socket.id ?? "");
     });
 
     socket.on("room-error", (data: { message: string }) => {
@@ -222,8 +236,25 @@ export default function App() {
 
   const startGame = useCallback(() => { socketRef.current?.emit("start-game"); }, []);
   const kickPlayer = useCallback((targetId: string) => { socketRef.current?.emit("kick-player", { targetId }); }, []);
-  const castNightVote = useCallback((targetId: string) => { setMyNightVote(targetId); socketRef.current?.emit("night-vote", { targetId }); }, []);
-  const castDayVote = useCallback((targetId: string) => { setMyDayVote(targetId); socketRef.current?.emit("day-vote", { targetId }); }, []);
+
+  const castNightVote = useCallback((targetId: string) => {
+    setMyNightVote(targetId);
+    socketRef.current?.emit("night-vote", { targetId });
+  }, []);
+
+  const castDoctorProtect = useCallback((targetId: string) => {
+    socketRef.current?.emit("doctor-protect", { targetId });
+  }, []);
+
+  const castDetectiveInvestigate = useCallback((targetId: string) => {
+    socketRef.current?.emit("detective-investigate", { targetId });
+  }, []);
+
+  const castDayVote = useCallback((targetId: string) => {
+    setMyDayVote(targetId);
+    socketRef.current?.emit("day-vote", { targetId });
+  }, []);
+
   const playAgain = useCallback(() => { socketRef.current?.emit("play-again"); }, []);
 
   return (
@@ -250,8 +281,12 @@ export default function App() {
           mafiaIds={mafiaIds}
           nightVoteStatus={nightVoteStatus}
           myNightVote={myNightVote}
+          myDoctorVote={myDoctorVote}
+          myDetectiveVote={myDetectiveVote}
           timerEndsAt={timerEndsAt}
           onNightVote={castNightVote}
+          onDoctorProtect={castDoctorProtect}
+          onDetectiveInvestigate={castDetectiveInvestigate}
         />
       )}
       {(phase === "night-result" || phase === "day-result") && elimInfo && (
@@ -272,6 +307,8 @@ export default function App() {
           timerEndsAt={timerEndsAt}
           dayVotes={dayVotes}
           myDayVote={myDayVote}
+          narration={dayNarration}
+          detectiveResult={myRole === "detective" ? detectiveResult : null}
           onDayVote={castDayVote}
         />
       )}

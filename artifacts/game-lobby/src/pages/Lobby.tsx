@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { Player } from "@/App";
 
+const MIN_PLAYERS = 5;
+
 type Props = {
   roomCode: string;
   players: Player[];
@@ -31,8 +33,8 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
     }
   }
 
-  const canStart = isHost && players.length >= 4;
-  const needed = Math.max(0, 4 - players.length);
+  const canStart = isHost && players.length >= MIN_PLAYERS;
+  const needed = Math.max(0, MIN_PLAYERS - players.length);
 
   return (
     <div className="min-h-screen flex flex-col items-center px-4 py-10" style={{ background: "#0a0a0b" }}>
@@ -57,12 +59,8 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
 
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-widest">
-              Players
-            </h2>
-            <span className="text-xs text-gray-600 font-mono">
-              {players.length} joined
-            </span>
+            <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Players</h2>
+            <span className="text-xs text-gray-600 font-mono">{players.length} joined</span>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -122,7 +120,7 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
             </button>
             {!canStart && needed > 0 && (
               <p className="text-center text-sm text-gray-600">
-                Need {needed} more player{needed !== 1 ? "s" : ""} to start
+                Need {needed} more player{needed !== 1 ? "s" : ""} to start (min {MIN_PLAYERS})
               </p>
             )}
           </div>

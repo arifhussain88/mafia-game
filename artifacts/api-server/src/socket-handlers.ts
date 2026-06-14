@@ -10,7 +10,9 @@ const TIMERS = {
   DAY_RESULT: 5000,
 };
 
-type Role = "mafia" | "civilian";
+const MIN_PLAYERS = 5;
+
+type Role = "mafia" | "civilian" | "doctor" | "detective";
 type Phase =
   | "lobby"
   | "role-reveal"
@@ -30,14 +32,24 @@ interface Player {
   role: Role | null;
 }
 
+interface DetectiveResult {
+  detectiveId: string;
+  targetName: string;
+  isMafia: boolean;
+}
+
 interface Room {
   code: string;
   players: Map<string, Player>;
   phase: Phase;
   nightVotes: Map<string, string>;
   dayVotes: Map<string, string>;
+  doctorProtect: Map<string, string>;
+  detectiveInvestigate: Map<string, string>;
   timer?: ReturnType<typeof setTimeout>;
   timerEndsAt: number;
+  pendingNarration: string;
+  pendingDetectiveResult: DetectiveResult | null;
 }
 
 const rooms = new Map<string, Room>();
@@ -68,8 +80,8 @@ function livingMafia(room: Room) {
   return living(room).filter((p) => p.role === "mafia");
 }
 
-function livingCivilians(room: Room) {
-  return living(room).filter((p) => p.role === "civilian");
+function livingTown(room: Room) {
+  return living(room).filter((p) => p.role !== "mafia");
 }
 
 function connectedLivingMafia(room: Room) {
@@ -78,9 +90,9 @@ function connectedLivingMafia(room: Room) {
 
 function checkWin(room: Room): "mafia" | "civilians" | null {
   const mafiaAlive = livingMafia(room).length;
-  const civAlive = livingCivilians(room).length;
+  const townAlive = livingTown(room).length;
   if (mafiaAlive === 0) return "civilians";
-  if (mafiaAlive >= civAlive) return "mafia";
+  if (mafiaAlive >= townAlive) return "mafia";
   return null;
 }
 
@@ -99,21 +111,27 @@ function getMafiaInfo(room: Room) {
   };
 }
 
-function startRoleReveal(io: Server, code: string) {
-  const room = rooms.get(code);
-  if (!room) return;
-
-  room.phase = "role-reveal";
-
+function assignRoles(room: Room) {
   const playerList = Array.from(room.players.values());
   const n = playerList.length;
   const mafiaCount = n >= 7 ? 2 : 1;
   const shuffled = [...playerList].sort(() => Math.random() - 0.5);
   shuffled.forEach((p, i) => {
-    p.role = i < mafiaCount ? "mafia" : "civilian";
     p.alive = true;
     p.connected = true;
+    if (i < mafiaCount) p.role = "mafia";
+    else if (i === mafiaCount) p.role = "doctor";
+    else if (i === mafiaCount + 1) p.role = "detective";
+    else p.role = "civilian";
   });
+}
+
+function startRoleReveal(io: Server, code: string) {
+  const room = rooms.get(code);
+  if (!room) return;
+
+  room.phase = "role-reveal";
+  assignRoles(room);
 
   const { mafiaNames, mafiaIds } = getMafiaInfo(room);
 
@@ -135,7 +153,7 @@ function startRoleReveal(io: Server, code: string) {
   });
 
   room.timer = setTimeout(() => startNight(io, code), TIMERS.ROLE_REVEAL);
-  logger.info({ code, mafiaCount, n }, "Roles assigned, role-reveal started");
+  logger.info({ code, n: room.players.size }, "Roles assigned, role-reveal started");
 }
 
 function startNight(io: Server, code: string) {
@@ -145,6 +163,8 @@ function startNight(io: Server, code: string) {
   clearRoomTimer(room);
   room.phase = "night";
   room.nightVotes = new Map();
+  room.doctorProtect = new Map();
+  room.detectiveInvestigate = new Map();
 
   const endsAt = Date.now() + TIMERS.NIGHT;
   room.timerEndsAt = endsAt;
@@ -175,36 +195,74 @@ function resolveNight(io: Server, code: string) {
   clearRoomTimer(room);
   room.phase = "night-result";
 
+  // Determine mafia's chosen target
   const voteCounts = new Map<string, number>();
   for (const targetId of room.nightVotes.values()) {
     voteCounts.set(targetId, (voteCounts.get(targetId) ?? 0) + 1);
   }
 
-  let eliminatedId: string | null = null;
-
+  let mafiaTargetId: string | null = null;
   if (voteCounts.size > 0) {
     const maxVotes = Math.max(...voteCounts.values());
     const topTargets = Array.from(voteCounts.entries())
       .filter(([, c]) => c === maxVotes)
       .map(([id]) => id);
-    eliminatedId = topTargets[Math.floor(Math.random() * topTargets.length)];
+    mafiaTargetId = topTargets[Math.floor(Math.random() * topTargets.length)];
   } else {
-    const civs = livingCivilians(room);
-    if (civs.length > 0) {
-      eliminatedId = civs[Math.floor(Math.random() * civs.length)].id;
+    const nonMafia = livingTown(room);
+    if (nonMafia.length > 0) {
+      mafiaTargetId = nonMafia[Math.floor(Math.random() * nonMafia.length)].id;
     }
   }
 
-  let eliminatedName = "";
-  let eliminatedRole: Role = "civilian";
+  // Doctor protection
+  const doctorProtectedId = Array.from(room.doctorProtect.values())[0] ?? null;
+  const wasProtected = mafiaTargetId !== null && doctorProtectedId === mafiaTargetId;
+
+  let eliminatedId: string | null = wasProtected ? null : mafiaTargetId;
+  let eliminatedName: string | null = null;
+  let eliminatedRole: Role | null = null;
+  let protectedName: string | null = null;
 
   if (eliminatedId) {
     const target = room.players.get(eliminatedId);
     if (target) {
       target.alive = false;
       eliminatedName = target.name;
-      eliminatedRole = target.role!;
+      eliminatedRole = target.role;
     }
+  }
+
+  if (wasProtected && mafiaTargetId) {
+    const prot = room.players.get(mafiaTargetId);
+    if (prot) protectedName = prot.name;
+  }
+
+  // Build public narration — no roles revealed
+  let narration: string;
+  if (protectedName) {
+    narration = `${protectedName} was attacked last night but survived until morning.`;
+  } else if (eliminatedName) {
+    narration = `${eliminatedName} was found dead this morning.`;
+  } else {
+    narration = "It was a quiet night. No one was harmed.";
+  }
+  room.pendingNarration = narration;
+
+  // Prepare detective result
+  room.pendingDetectiveResult = null;
+  for (const [detectiveId, targetId] of room.detectiveInvestigate.entries()) {
+    const detective = room.players.get(detectiveId);
+    if (!detective || !detective.alive) continue;
+    const investigated = room.players.get(targetId);
+    if (investigated) {
+      room.pendingDetectiveResult = {
+        detectiveId,
+        targetName: investigated.name,
+        isMafia: investigated.role === "mafia",
+      };
+    }
+    break;
   }
 
   io.to(code).emit("night-result", {
@@ -214,7 +272,7 @@ function resolveNight(io: Server, code: string) {
     players: serializePlayers(room.players),
   });
 
-  logger.info({ code, eliminatedName, eliminatedRole }, "Night resolved");
+  logger.info({ code, eliminatedName, wasProtected }, "Night resolved");
 
   room.timer = setTimeout(() => {
     const winner = checkWin(room);
@@ -233,11 +291,26 @@ function startDayDiscussion(io: Server, code: string) {
   const endsAt = Date.now() + TIMERS.DAY_DISCUSSION;
   room.timerEndsAt = endsAt;
 
+  const narration = room.pendingNarration;
+  room.pendingNarration = "";
+
   io.to(code).emit("game-phase", {
     phase: "day-discussion",
     endsAt,
     players: serializePlayers(room.players),
+    narration,
   });
+
+  // Send detective result privately
+  if (room.pendingDetectiveResult) {
+    const { detectiveId, targetName, isMafia } = room.pendingDetectiveResult;
+    const detective = room.players.get(detectiveId);
+    if (detective && detective.alive) {
+      io.to(detectiveId).emit("detective-result", { targetName, isMafia });
+      logger.info({ code, detectiveId, targetName, isMafia }, "Detective result sent");
+    }
+    room.pendingDetectiveResult = null;
+  }
 
   room.timer = setTimeout(() => startDayVote(io, code), TIMERS.DAY_DISCUSSION);
   logger.info({ code }, "Day discussion started");
@@ -298,7 +371,7 @@ function resolveDay(io: Server, code: string) {
     if (target) {
       target.alive = false;
       eliminatedName = target.name;
-      eliminatedRole = target.role!;
+      eliminatedRole = target.role;
     }
   }
 
@@ -341,14 +414,15 @@ function handleMidGameDisconnect(socketId: string, room: Room, io: Server, code:
   player.connected = false;
   room.nightVotes.delete(socketId);
   room.dayVotes.delete(socketId);
+  room.doctorProtect.delete(socketId);
+  room.detectiveInvestigate.delete(socketId);
 
   io.to(code).emit("players-updated", { players: serializePlayers(room.players) });
 
   if (room.phase === "night") {
     broadcastNightVoteStatus(io, code);
     const mafiaAlive = connectedLivingMafia(room);
-    const allVoted =
-      mafiaAlive.length > 0 && mafiaAlive.every((m) => room.nightVotes.has(m.id));
+    const allVoted = mafiaAlive.length > 0 && mafiaAlive.every((m) => room.nightVotes.has(m.id));
     if (allVoted) resolveNight(io, code);
   }
 
@@ -382,7 +456,11 @@ export function registerSocketHandlers(io: Server) {
         phase: "lobby",
         nightVotes: new Map(),
         dayVotes: new Map(),
+        doctorProtect: new Map(),
+        detectiveInvestigate: new Map(),
         timerEndsAt: 0,
+        pendingNarration: "",
+        pendingDetectiveResult: null,
       };
       rooms.set(code, room);
       socket.join(code);
@@ -402,7 +480,6 @@ export function registerSocketHandlers(io: Server) {
       if (!room) { socket.emit("room-error", { message: "Room not found. Check your code." }); return; }
 
       if (room.phase !== "lobby") {
-        // Check for reconnection
         const disconnected = Array.from(room.players.values()).find(
           (p) => !p.connected && p.name.toLowerCase() === name.toLowerCase(),
         );
@@ -412,7 +489,6 @@ export function registerSocketHandlers(io: Server) {
           return;
         }
 
-        // Restore disconnected player with new socket id
         room.players.delete(disconnected.id);
         disconnected.id = socket.id;
         disconnected.connected = true;
@@ -421,7 +497,6 @@ export function registerSocketHandlers(io: Server) {
 
         const { mafiaNames, mafiaIds } = getMafiaInfo(room);
 
-        // Send full game state back to reconnecting player
         socket.emit("reconnected", {
           code,
           phase: room.phase,
@@ -430,7 +505,6 @@ export function registerSocketHandlers(io: Server) {
           isHost: disconnected.isHost,
         });
 
-        // Re-send their role privately
         socket.emit("role-assigned", {
           role: disconnected.role,
           mafiaNames: disconnected.role === "mafia" ? mafiaNames : [],
@@ -478,7 +552,10 @@ export function registerSocketHandlers(io: Server) {
         const player = room.players.get(socket.id);
         if (!player) continue;
         if (!player.isHost) { socket.emit("room-error", { message: "Only the host can start the game." }); return; }
-        if (room.players.size < 4) { socket.emit("room-error", { message: "Need at least 4 players to start." }); return; }
+        if (room.players.size < MIN_PLAYERS) {
+          socket.emit("room-error", { message: `Need at least ${MIN_PLAYERS} players to start.` });
+          return;
+        }
         if (room.phase !== "lobby") return;
         startRoleReveal(io, code);
         return;
@@ -495,16 +572,15 @@ export function registerSocketHandlers(io: Server) {
         room.phase = "lobby";
         room.nightVotes = new Map();
         room.dayVotes = new Map();
+        room.doctorProtect = new Map();
+        room.detectiveInvestigate = new Map();
         room.timerEndsAt = 0;
+        room.pendingNarration = "";
+        room.pendingDetectiveResult = null;
 
-        // Reset connected players, drop disconnected ones
         for (const [id, p] of room.players.entries()) {
-          if (!p.connected) {
-            room.players.delete(id);
-          } else {
-            p.alive = true;
-            p.role = null;
-          }
+          if (!p.connected) room.players.delete(id);
+          else { p.alive = true; p.role = null; }
         }
 
         io.to(code).emit("room-reset", { players: serializePlayers(room.players) });
@@ -528,6 +604,37 @@ export function registerSocketHandlers(io: Server) {
         const connectedMafia = connectedLivingMafia(room);
         const allVoted = connectedMafia.length > 0 && connectedMafia.every((m) => room.nightVotes.has(m.id));
         if (allVoted) resolveNight(io, code);
+        return;
+      }
+    });
+
+    socket.on("doctor-protect", (data: { targetId: string }) => {
+      for (const [, room] of rooms.entries()) {
+        const doctor = room.players.get(socket.id);
+        if (!doctor) continue;
+        if (room.phase !== "night" || !doctor.alive || doctor.role !== "doctor") return;
+
+        const target = room.players.get(data.targetId);
+        if (!target || !target.alive) return;
+
+        room.doctorProtect.set(socket.id, data.targetId);
+        // private confirmation only
+        socket.emit("doctor-protect-ack", { targetId: data.targetId });
+        return;
+      }
+    });
+
+    socket.on("detective-investigate", (data: { targetId: string }) => {
+      for (const [, room] of rooms.entries()) {
+        const detective = room.players.get(socket.id);
+        if (!detective) continue;
+        if (room.phase !== "night" || !detective.alive || detective.role !== "detective") return;
+
+        const target = room.players.get(data.targetId);
+        if (!target || !target.alive || target.id === socket.id) return;
+
+        room.detectiveInvestigate.set(socket.id, data.targetId);
+        socket.emit("detective-investigate-ack", { targetId: data.targetId });
         return;
       }
     });
