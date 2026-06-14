@@ -26,6 +26,7 @@ interface Player {
   name: string;
   isHost: boolean;
   alive: boolean;
+  connected: boolean;
   role: Role | null;
 }
 
@@ -54,6 +55,7 @@ function serializePlayers(players: Map<string, Player>, revealRoles = false) {
     name: p.name,
     isHost: p.isHost,
     alive: p.alive,
+    connected: p.connected,
     ...(revealRoles ? { role: p.role } : {}),
   }));
 }
@@ -68,6 +70,10 @@ function livingMafia(room: Room) {
 
 function livingCivilians(room: Room) {
   return living(room).filter((p) => p.role === "civilian");
+}
+
+function connectedLivingMafia(room: Room) {
+  return livingMafia(room).filter((p) => p.connected);
 }
 
 function checkWin(room: Room): "mafia" | "civilians" | null {
@@ -85,6 +91,14 @@ function clearRoomTimer(room: Room) {
   }
 }
 
+function getMafiaInfo(room: Room) {
+  const mafia = Array.from(room.players.values()).filter((p) => p.role === "mafia");
+  return {
+    mafiaNames: mafia.map((p) => p.name),
+    mafiaIds: mafia.map((p) => p.id),
+  };
+}
+
 function startRoleReveal(io: Server, code: string) {
   const room = rooms.get(code);
   if (!room) return;
@@ -98,16 +112,16 @@ function startRoleReveal(io: Server, code: string) {
   shuffled.forEach((p, i) => {
     p.role = i < mafiaCount ? "mafia" : "civilian";
     p.alive = true;
+    p.connected = true;
   });
 
-  const allMafiaNames = shuffled.filter((p) => p.role === "mafia").map((p) => p.name);
-  const allMafiaIds = shuffled.filter((p) => p.role === "mafia").map((p) => p.id);
+  const { mafiaNames, mafiaIds } = getMafiaInfo(room);
 
   for (const player of room.players.values()) {
     io.to(player.id).emit("role-assigned", {
       role: player.role,
-      mafiaNames: player.role === "mafia" ? allMafiaNames : [],
-      mafiaIds: player.role === "mafia" ? allMafiaIds : [],
+      mafiaNames: player.role === "mafia" ? mafiaNames : [],
+      mafiaIds: player.role === "mafia" ? mafiaIds : [],
     });
   }
 
@@ -142,7 +156,6 @@ function startNight(io: Server, code: string) {
   });
 
   broadcastNightVoteStatus(io, code);
-
   room.timer = setTimeout(() => resolveNight(io, code), TIMERS.NIGHT);
   logger.info({ code }, "Night phase started");
 }
@@ -150,7 +163,7 @@ function startNight(io: Server, code: string) {
 function broadcastNightVoteStatus(io: Server, code: string) {
   const room = rooms.get(code);
   if (!room) return;
-  const total = livingMafia(room).length;
+  const total = connectedLivingMafia(room).length;
   const voted = room.nightVotes.size;
   io.to(code).emit("night-vote-status", { voted, total });
 }
@@ -321,54 +334,33 @@ function endGame(io: Server, code: string, winner: "mafia" | "civilians") {
   logger.info({ code, winner }, "Game over");
 }
 
-function removePlayerFromRooms(socketId: string, io: Server) {
-  for (const [code, room] of rooms.entries()) {
-    if (!room.players.has(socketId)) continue;
+function handleMidGameDisconnect(socketId: string, room: Room, io: Server, code: string) {
+  const player = room.players.get(socketId);
+  if (!player) return;
 
-    const player = room.players.get(socketId)!;
-    const wasHost = player.isHost;
+  player.connected = false;
+  room.nightVotes.delete(socketId);
+  room.dayVotes.delete(socketId);
 
-    if (room.phase === "lobby") {
-      room.players.delete(socketId);
-      if (room.players.size === 0) {
-        rooms.delete(code);
-        return;
-      }
-      if (wasHost) {
-        const next = room.players.values().next().value!;
-        next.isHost = true;
-      }
-      io.to(code).emit("players-updated", { players: serializePlayers(room.players) });
-    } else {
-      player.alive = false;
-      room.nightVotes.delete(socketId);
-      room.dayVotes.delete(socketId);
+  io.to(code).emit("players-updated", { players: serializePlayers(room.players) });
 
-      const winner = room.phase !== "game-over" ? checkWin(room) : null;
-      if (winner && room.phase !== "night-result" && room.phase !== "day-result" && room.phase !== "game-over") {
-        clearRoomTimer(room);
-        endGame(io, code, winner);
-      } else {
-        io.to(code).emit("players-updated", { players: serializePlayers(room.players) });
+  if (room.phase === "night") {
+    broadcastNightVoteStatus(io, code);
+    const mafiaAlive = connectedLivingMafia(room);
+    const allVoted =
+      mafiaAlive.length > 0 && mafiaAlive.every((m) => room.nightVotes.has(m.id));
+    if (allVoted) resolveNight(io, code);
+  }
 
-        if (room.phase === "night") {
-          const mafiaTotal = livingMafia(room).length;
-          const mafiaVoted = Array.from(room.nightVotes.keys()).filter((id) => {
-            const p = room.players.get(id);
-            return p && p.alive && p.role === "mafia";
-          }).length;
-
-          broadcastNightVoteStatus(io, code);
-
-          if (mafiaTotal > 0 && mafiaVoted >= mafiaTotal) {
-            resolveNight(io, code);
-          }
-        }
-      }
-    }
-
-    logger.info({ code, socketId }, "Player disconnected from room");
-    return;
+  const winner = checkWin(room);
+  if (
+    winner &&
+    room.phase !== "night-result" &&
+    room.phase !== "day-result" &&
+    room.phase !== "game-over"
+  ) {
+    clearRoomTimer(room);
+    endGame(io, code, winner);
   }
 }
 
@@ -383,7 +375,7 @@ export function registerSocketHandlers(io: Server) {
       let code = generateCode();
       while (rooms.has(code)) code = generateCode();
 
-      const player: Player = { id: socket.id, name, isHost: true, alive: true, role: null };
+      const player: Player = { id: socket.id, name, isHost: true, alive: true, connected: true, role: null };
       const room: Room = {
         code,
         players: new Map([[socket.id, player]]),
@@ -408,14 +400,54 @@ export function registerSocketHandlers(io: Server) {
 
       const room = rooms.get(code);
       if (!room) { socket.emit("room-error", { message: "Room not found. Check your code." }); return; }
-      if (room.phase !== "lobby") { socket.emit("room-error", { message: "This game has already started." }); return; }
+
+      if (room.phase !== "lobby") {
+        // Check for reconnection
+        const disconnected = Array.from(room.players.values()).find(
+          (p) => !p.connected && p.name.toLowerCase() === name.toLowerCase(),
+        );
+
+        if (!disconnected) {
+          socket.emit("room-error", { message: "This game has already started." });
+          return;
+        }
+
+        // Restore disconnected player with new socket id
+        room.players.delete(disconnected.id);
+        disconnected.id = socket.id;
+        disconnected.connected = true;
+        room.players.set(socket.id, disconnected);
+        socket.join(code);
+
+        const { mafiaNames, mafiaIds } = getMafiaInfo(room);
+
+        // Send full game state back to reconnecting player
+        socket.emit("reconnected", {
+          code,
+          phase: room.phase,
+          endsAt: room.timerEndsAt,
+          players: serializePlayers(room.players),
+          isHost: disconnected.isHost,
+        });
+
+        // Re-send their role privately
+        socket.emit("role-assigned", {
+          role: disconnected.role,
+          mafiaNames: disconnected.role === "mafia" ? mafiaNames : [],
+          mafiaIds: disconnected.role === "mafia" ? mafiaIds : [],
+        });
+
+        socket.to(code).emit("players-updated", { players: serializePlayers(room.players) });
+        logger.info({ code, name }, "Player reconnected");
+        return;
+      }
 
       const nameTaken = Array.from(room.players.values()).some(
         (p) => p.name.toLowerCase() === name.toLowerCase(),
       );
       if (nameTaken) { socket.emit("room-error", { message: "That name is already taken in this room." }); return; }
 
-      const player: Player = { id: socket.id, name, isHost: false, alive: true, role: null };
+      const player: Player = { id: socket.id, name, isHost: false, alive: true, connected: true, role: null };
       room.players.set(socket.id, player);
       socket.join(code);
 
@@ -424,16 +456,59 @@ export function registerSocketHandlers(io: Server) {
       logger.info({ code, name }, "Player joined room");
     });
 
+    socket.on("kick-player", (data: { targetId: string }) => {
+      for (const [code, room] of rooms.entries()) {
+        const kicker = room.players.get(socket.id);
+        if (!kicker) continue;
+        if (!kicker.isHost || room.phase !== "lobby") return;
+
+        const target = room.players.get(data.targetId);
+        if (!target || target.id === socket.id) return;
+
+        room.players.delete(data.targetId);
+        io.to(data.targetId).emit("kicked");
+        io.to(code).emit("players-updated", { players: serializePlayers(room.players) });
+        logger.info({ code, kickedName: target.name }, "Player kicked");
+        return;
+      }
+    });
+
     socket.on("start-game", () => {
       for (const [code, room] of rooms.entries()) {
         const player = room.players.get(socket.id);
         if (!player) continue;
-
         if (!player.isHost) { socket.emit("room-error", { message: "Only the host can start the game." }); return; }
         if (room.players.size < 4) { socket.emit("room-error", { message: "Need at least 4 players to start." }); return; }
         if (room.phase !== "lobby") return;
-
         startRoleReveal(io, code);
+        return;
+      }
+    });
+
+    socket.on("play-again", () => {
+      for (const [code, room] of rooms.entries()) {
+        const player = room.players.get(socket.id);
+        if (!player) continue;
+        if (!player.isHost || room.phase !== "game-over") return;
+
+        clearRoomTimer(room);
+        room.phase = "lobby";
+        room.nightVotes = new Map();
+        room.dayVotes = new Map();
+        room.timerEndsAt = 0;
+
+        // Reset connected players, drop disconnected ones
+        for (const [id, p] of room.players.entries()) {
+          if (!p.connected) {
+            room.players.delete(id);
+          } else {
+            p.alive = true;
+            p.role = null;
+          }
+        }
+
+        io.to(code).emit("room-reset", { players: serializePlayers(room.players) });
+        logger.info({ code }, "Room reset for play again");
         return;
       }
     });
@@ -442,9 +517,7 @@ export function registerSocketHandlers(io: Server) {
       for (const [code, room] of rooms.entries()) {
         const voter = room.players.get(socket.id);
         if (!voter) continue;
-
-        if (room.phase !== "night") return;
-        if (!voter.alive || voter.role !== "mafia") return;
+        if (room.phase !== "night" || !voter.alive || voter.role !== "mafia") return;
 
         const target = room.players.get(data.targetId);
         if (!target || !target.alive || target.role === "mafia") return;
@@ -452,10 +525,9 @@ export function registerSocketHandlers(io: Server) {
         room.nightVotes.set(socket.id, data.targetId);
         broadcastNightVoteStatus(io, code);
 
-        const mafiaAlive = livingMafia(room);
-        const allVoted = mafiaAlive.every((m) => room.nightVotes.has(m.id));
+        const connectedMafia = connectedLivingMafia(room);
+        const allVoted = connectedMafia.length > 0 && connectedMafia.every((m) => room.nightVotes.has(m.id));
         if (allVoted) resolveNight(io, code);
-
         return;
       }
     });
@@ -464,10 +536,7 @@ export function registerSocketHandlers(io: Server) {
       for (const [code, room] of rooms.entries()) {
         const voter = room.players.get(socket.id);
         if (!voter) continue;
-
-        if (room.phase !== "day-vote") return;
-        if (!voter.alive) return;
-        if (data.targetId === socket.id) return;
+        if (room.phase !== "day-vote" || !voter.alive || data.targetId === socket.id) return;
 
         const target = room.players.get(data.targetId);
         if (!target || !target.alive) return;
@@ -484,14 +553,35 @@ export function registerSocketHandlers(io: Server) {
         const majority = Math.floor(livingCount / 2) + 1;
         const maxVotes = Math.max(...Object.values(voteCounts));
         if (maxVotes >= majority) resolveDay(io, code);
-
         return;
       }
     });
 
     socket.on("disconnect", () => {
-      removePlayerFromRooms(socket.id, io);
-      logger.info({ socketId: socket.id }, "Socket disconnected");
+      for (const [code, room] of rooms.entries()) {
+        if (!room.players.has(socket.id)) continue;
+
+        if (room.phase === "lobby") {
+          const player = room.players.get(socket.id)!;
+          const wasHost = player.isHost;
+          room.players.delete(socket.id);
+
+          if (room.players.size === 0) { rooms.delete(code); }
+          else {
+            if (wasHost) {
+              const next = room.players.values().next().value!;
+              next.isHost = true;
+            }
+            io.to(code).emit("players-updated", { players: serializePlayers(room.players) });
+          }
+        } else if (room.phase !== "game-over") {
+          handleMidGameDisconnect(socket.id, room, io, code);
+        }
+
+        logger.info({ socketId: socket.id, code }, "Player disconnected");
+        return;
+      }
+      logger.info({ socketId: socket.id }, "Socket disconnected (no room)");
     });
   });
 }
