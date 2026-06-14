@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Multiplayer Lobby"
+version = "1.0.0"
+id = "artifacts/game-lobby"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22143
+
+[services.development]
+run = "pnpm --filter @workspace/game-lobby run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/game-lobby", "run", "build" ]
+publicDir = "artifacts/game-lobby/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22143"
+BASE_PATH = "/"
