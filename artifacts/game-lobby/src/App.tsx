@@ -4,69 +4,179 @@ import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import Home from "@/pages/Home";
 import Lobby from "@/pages/Lobby";
-import GameStarted from "@/pages/GameStarted";
+import RoleReveal from "@/pages/RoleReveal";
+import NightPhase from "@/pages/NightPhase";
+import EliminationReveal from "@/pages/EliminationReveal";
+import DayPhase from "@/pages/DayPhase";
+import GameOver from "@/pages/GameOver";
+
+export type Role = "mafia" | "civilian";
 
 export type Player = {
   id: string;
   name: string;
   isHost: boolean;
+  alive: boolean;
+  role?: Role;
 };
 
-export type Screen = "home" | "lobby" | "game";
+export type GamePhase =
+  | "home"
+  | "lobby"
+  | "role-reveal"
+  | "night"
+  | "night-result"
+  | "day-discussion"
+  | "day-vote"
+  | "day-result"
+  | "game-over";
 
 export default function App() {
   const socketRef = useRef<Socket | null>(null);
-  const [screen, setScreen] = useState<Screen>("home");
-  const [roomCode, setRoomCode] = useState("");
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [isHost, setIsHost] = useState(false);
-  const [mySocketId, setMySocketId] = useState("");
   const { toast } = useToast();
+
+  const [mySocketId, setMySocketId] = useState("");
+  const [myName, setMyName] = useState("");
+  const [roomCode, setRoomCode] = useState("");
+  const [isHost, setIsHost] = useState(false);
+  const [phase, setPhase] = useState<GamePhase>("home");
+  const [players, setPlayers] = useState<Player[]>([]);
+
+  const [myRole, setMyRole] = useState<Role | null>(null);
+  const [mafiaNames, setMafiaNames] = useState<string[]>([]);
+  const [mafiaIds, setMafiaIds] = useState<string[]>([]);
+
+  const [timerEndsAt, setTimerEndsAt] = useState<number | null>(null);
+  const [nightVoteStatus, setNightVoteStatus] = useState({ voted: 0, total: 0 });
+  const [myNightVote, setMyNightVote] = useState<string | null>(null);
+  const [dayVotes, setDayVotes] = useState<Record<string, number>>({});
+  const [myDayVote, setMyDayVote] = useState<string | null>(null);
+
+  const [elimInfo, setElimInfo] = useState<{
+    name: string | null;
+    role: Role | null;
+    skipped?: boolean;
+    phase: "night-result" | "day-result";
+  } | null>(null);
+
+  const [winner, setWinner] = useState<"mafia" | "civilians" | null>(null);
+  const [gameOverPlayers, setGameOverPlayers] = useState<Player[]>([]);
 
   useEffect(() => {
     const socket = io({ path: "/socket.io" });
     socketRef.current = socket;
 
-    socket.on("connect", () => {
-      setMySocketId(socket.id ?? "");
-    });
+    socket.on("connect", () => setMySocketId(socket.id ?? ""));
 
     socket.on("room-created", (data: { code: string; players: Player[]; isHost: boolean }) => {
       setRoomCode(data.code);
       setPlayers(data.players);
       setIsHost(data.isHost);
-      setScreen("lobby");
+      setPhase("lobby");
     });
 
     socket.on("room-joined", (data: { code: string; players: Player[]; isHost: boolean }) => {
       setRoomCode(data.code);
       setPlayers(data.players);
       setIsHost(data.isHost);
-      setScreen("lobby");
+      setPhase("lobby");
     });
 
     socket.on("players-updated", (data: { players: Player[] }) => {
       setPlayers(data.players);
     });
 
-    socket.on("game-started", () => {
-      setScreen("game");
+    socket.on("role-assigned", (data: { role: Role; mafiaNames: string[]; mafiaIds: string[] }) => {
+      setMyRole(data.role);
+      setMafiaNames(data.mafiaNames);
+      setMafiaIds(data.mafiaIds);
+    });
+
+    socket.on(
+      "game-phase",
+      (data: {
+        phase: GamePhase;
+        endsAt: number;
+        players: Player[];
+        votes?: Record<string, number>;
+      }) => {
+        setPhase(data.phase);
+        setPlayers(data.players);
+        setTimerEndsAt(data.endsAt);
+        if (data.phase === "night") {
+          setMyNightVote(null);
+        }
+        if (data.phase === "day-vote") {
+          setDayVotes(data.votes ?? {});
+          setMyDayVote(null);
+        }
+        if (data.phase === "day-discussion") {
+          setDayVotes({});
+        }
+      },
+    );
+
+    socket.on("night-vote-status", (data: { voted: number; total: number }) => {
+      setNightVoteStatus(data);
+    });
+
+    socket.on("day-vote-update", (data: { votes: Record<string, number> }) => {
+      setDayVotes(data.votes);
+    });
+
+    socket.on(
+      "night-result",
+      (data: { eliminatedId: string; eliminatedName: string; eliminatedRole: Role; players: Player[] }) => {
+        setPhase("night-result");
+        setPlayers(data.players);
+        setElimInfo({
+          name: data.eliminatedName,
+          role: data.eliminatedRole,
+          phase: "night-result",
+        });
+      },
+    );
+
+    socket.on(
+      "day-result",
+      (data: {
+        eliminatedId: string | null;
+        eliminatedName: string | null;
+        eliminatedRole: Role | null;
+        skipped: boolean;
+        players: Player[];
+      }) => {
+        setPhase("day-result");
+        setPlayers(data.players);
+        setElimInfo({
+          name: data.eliminatedName,
+          role: data.eliminatedRole,
+          skipped: data.skipped,
+          phase: "day-result",
+        });
+      },
+    );
+
+    socket.on("game-over", (data: { winner: "mafia" | "civilians"; players: Player[] }) => {
+      setWinner(data.winner);
+      setGameOverPlayers(data.players);
+      setPhase("game-over");
     });
 
     socket.on("room-error", (data: { message: string }) => {
       toast({ title: "Error", description: data.message, variant: "destructive" });
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return () => { socket.disconnect(); };
   }, [toast]);
 
   const createRoom = useCallback((name: string) => {
+    setMyName(name);
     socketRef.current?.emit("create-room", { name });
   }, []);
 
   const joinRoom = useCallback((code: string, name: string) => {
+    setMyName(name);
     socketRef.current?.emit("join-room", { code, name });
   }, []);
 
@@ -74,12 +184,22 @@ export default function App() {
     socketRef.current?.emit("start-game");
   }, []);
 
+  const castNightVote = useCallback((targetId: string) => {
+    setMyNightVote(targetId);
+    socketRef.current?.emit("night-vote", { targetId });
+  }, []);
+
+  const castDayVote = useCallback((targetId: string) => {
+    setMyDayVote(targetId);
+    socketRef.current?.emit("day-vote", { targetId });
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      {screen === "home" && (
+      {phase === "home" && (
         <Home onCreateRoom={createRoom} onJoinRoom={joinRoom} />
       )}
-      {screen === "lobby" && (
+      {phase === "lobby" && (
         <Lobby
           roomCode={roomCode}
           players={players}
@@ -88,8 +208,43 @@ export default function App() {
           onStartGame={startGame}
         />
       )}
-      {screen === "game" && (
-        <GameStarted roomCode={roomCode} players={players} />
+      {phase === "role-reveal" && myRole && (
+        <RoleReveal role={myRole} mafiaNames={mafiaNames} myName={myName} />
+      )}
+      {phase === "night" && myRole && (
+        <NightPhase
+          players={players}
+          mySocketId={mySocketId}
+          myRole={myRole}
+          mafiaIds={mafiaIds}
+          nightVoteStatus={nightVoteStatus}
+          myNightVote={myNightVote}
+          timerEndsAt={timerEndsAt}
+          onNightVote={castNightVote}
+        />
+      )}
+      {(phase === "night-result" || phase === "day-result") && elimInfo && (
+        <EliminationReveal
+          phase={elimInfo.phase}
+          eliminatedName={elimInfo.name}
+          eliminatedRole={elimInfo.role}
+          skipped={elimInfo.skipped}
+        />
+      )}
+      {(phase === "day-discussion" || phase === "day-vote") && (
+        <DayPhase
+          subPhase={phase}
+          players={players}
+          mySocketId={mySocketId}
+          myRole={myRole}
+          timerEndsAt={timerEndsAt}
+          dayVotes={dayVotes}
+          myDayVote={myDayVote}
+          onDayVote={castDayVote}
+        />
+      )}
+      {phase === "game-over" && winner && (
+        <GameOver winner={winner} players={gameOverPlayers} mySocketId={mySocketId} />
       )}
       <Toaster />
     </div>
