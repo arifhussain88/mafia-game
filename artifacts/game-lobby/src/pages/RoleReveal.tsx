@@ -1,5 +1,9 @@
 import { useState, useEffect } from "react";
 import type { Role } from "@/App";
+import MafiaIcon from "@/components/icons/MafiaIcon";
+import DoctorIcon from "@/components/icons/DoctorIcon";
+import DetectiveIcon from "@/components/icons/DetectiveIcon";
+import CivilianIcon from "@/components/icons/CivilianIcon";
 
 type Props = {
   role: Role;
@@ -7,26 +11,81 @@ type Props = {
   myName: string;
 };
 
+const ROLE_DATA: Record<Role, {
+  card: string;
+  nameColor: string;
+  label: string;
+  description: string;
+  footnote: (params: { mafiaNames: string[]; myName: string }) => string;
+}> = {
+  mafia: {
+    card: "bg-red-950 border-red-900 shadow-[0_0_48px_rgba(185,28,28,0.25)]",
+    nameColor: "text-red-400",
+    label: "MAFIA",
+    description: "Eliminate the civilians without being caught.",
+    footnote: ({ mafiaNames, myName }) => {
+      const teammates = mafiaNames.filter((n) => n !== myName);
+      if (teammates.length === 0) return "You are the only Mafia member.";
+      return `Partner${teammates.length > 1 ? "s" : ""}: ${teammates.join(", ")}`;
+    },
+  },
+  doctor: {
+    card: "bg-emerald-950 border-emerald-900 shadow-[0_0_40px_rgba(6,78,59,0.3)]",
+    nameColor: "text-emerald-400",
+    label: "DOCTOR",
+    description: "Each night, choose one player to protect from the Mafia.",
+    footnote: () => "You can protect yourself. Your choice is private.",
+  },
+  detective: {
+    card: "bg-amber-950 border-amber-900 shadow-[0_0_40px_rgba(120,53,15,0.3)]",
+    nameColor: "text-amber-400",
+    label: "DETECTIVE",
+    description: "Each night, investigate one player. At dawn, learn if they're Mafia.",
+    footnote: () => "Your investigation results are visible only to you.",
+  },
+  civilian: {
+    card: "bg-gray-900 border-gray-700 shadow-[0_0_32px_rgba(0,0,0,0.5)]",
+    nameColor: "text-gray-100",
+    label: "CIVILIAN",
+    description: "Find and vote out the Mafia to save the town.",
+    footnote: () => "Trust no one. The Mafia is among you.",
+  },
+};
+
+function RoleIcon({ role }: { role: Role }) {
+  switch (role) {
+    case "mafia":     return <MafiaIcon size={72} />;
+    case "doctor":    return <DoctorIcon size={72} />;
+    case "detective": return <DetectiveIcon size={72} />;
+    case "civilian":  return <CivilianIcon size={72} />;
+  }
+}
+
 export default function RoleReveal({ role, mafiaNames, myName }: Props) {
   const [flipped, setFlipped] = useState(false);
+  const data = ROLE_DATA[role];
 
   useEffect(() => {
     const t = setTimeout(() => setFlipped(true), 1200);
     return () => clearTimeout(t);
   }, []);
 
-  const isMafia = role === "mafia";
-  const teammates = mafiaNames.filter((n) => n !== myName);
+  const footnote = data.footnote({ mafiaNames, myName });
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12" style={{ background: "#0a0a0b" }}>
-      <p className="text-gray-600 text-sm mb-10 tracking-widest uppercase font-medium">Your role</p>
+    <div
+      className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
+      style={{ background: "#0a0a0b" }}
+    >
+      <p className="text-gray-600 text-sm mb-10 tracking-widest uppercase font-medium">
+        Your role
+      </p>
 
       <div style={{ perspective: "900px" }} className="w-64 h-80">
         <div
           style={{
             transformStyle: "preserve-3d",
-            transition: "transform 0.8s cubic-bezier(0.4,0,0.2,1)",
+            transition: "transform 0.85s cubic-bezier(0.4,0,0.2,1)",
             transform: flipped ? "rotateY(0deg)" : "rotateY(180deg)",
             position: "relative",
             width: "100%",
@@ -36,24 +95,18 @@ export default function RoleReveal({ role, mafiaNames, myName }: Props) {
           {/* Front — role card */}
           <div
             style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" }}
-            className={`absolute inset-0 rounded-2xl flex flex-col items-center justify-center p-6 border ${
-              isMafia
-                ? "bg-red-950 border-red-900 shadow-[0_0_48px_rgba(185,28,28,0.25)]"
-                : "bg-gray-900 border-gray-700 shadow-[0_0_32px_rgba(0,0,0,0.5)]"
-            }`}
+            className={`absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-4 p-6 border ${data.card}`}
           >
-            <div className="text-5xl mb-5">{isMafia ? "🔪" : "🏘️"}</div>
-            <div className={`text-3xl font-bold tracking-wider mb-3 ${isMafia ? "text-red-400" : "text-amber-400"}`}>
-              {isMafia ? "MAFIA" : "CIVILIAN"}
+            <RoleIcon role={role} />
+            <div className={`text-2xl font-bold tracking-widest ${data.nameColor}`}>
+              {data.label}
             </div>
-            <p className="text-center text-sm leading-relaxed text-gray-400">
-              {isMafia
-                ? "Eliminate the civilians without being caught."
-                : "Find and vote out the Mafia to save the town."}
+            <p className="text-center text-sm leading-relaxed text-gray-400 px-2">
+              {data.description}
             </p>
           </div>
 
-          {/* Back */}
+          {/* Back — face-down card */}
           <div
             style={{
               backfaceVisibility: "hidden",
@@ -62,27 +115,21 @@ export default function RoleReveal({ role, mafiaNames, myName }: Props) {
             }}
             className="absolute inset-0 rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center"
           >
-            <div className="text-6xl opacity-20 select-none">?</div>
+            <span className="text-7xl opacity-10 select-none font-bold text-white">?</span>
           </div>
         </div>
       </div>
 
       {flipped && (
-        <div className="mt-8 w-full max-w-xs">
-          {isMafia && teammates.length > 0 && (
-            <div className="bg-red-950/50 border border-red-900/50 rounded-xl px-4 py-3 text-center">
-              <p className="text-red-500 text-xs font-semibold uppercase tracking-widest mb-1">
-                {teammates.length === 1 ? "Your partner" : "Your partners"}
-              </p>
-              <p className="text-white font-semibold">{teammates.join(", ")}</p>
-            </div>
-          )}
-          {isMafia && teammates.length === 0 && (
-            <p className="text-center text-red-500/70 text-sm">You are the only Mafia member.</p>
-          )}
-          {!isMafia && (
-            <p className="text-center text-gray-600 text-sm">Trust no one. The Mafia is among you.</p>
-          )}
+        <div className="mt-8 w-full max-w-xs text-center">
+          <p className={`text-sm ${
+            role === "mafia" ? "text-red-500/80" :
+            role === "doctor" ? "text-emerald-600" :
+            role === "detective" ? "text-amber-600" :
+            "text-gray-600"
+          }`}>
+            {footnote}
+          </p>
         </div>
       )}
 

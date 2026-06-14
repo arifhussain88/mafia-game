@@ -1,5 +1,7 @@
+import { useEffect, useRef } from "react";
 import type { Player, Role } from "@/App";
 import { useCountdown } from "@/hooks/useCountdown";
+import { playTimerAlert } from "@/lib/audio";
 
 type Props = {
   subPhase: "day-discussion" | "day-vote";
@@ -29,15 +31,25 @@ export default function DayPhase({
   onDayVote,
 }: Props) {
   const countdown = useCountdown(timerEndsAt);
+  const alertFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (countdown <= 8 && countdown > 0 && !alertFiredRef.current) {
+      alertFiredRef.current = true;
+      playTimerAlert();
+    }
+    if (countdown > 15) alertFiredRef.current = false;
+  }, [countdown]);
+
   const me = players.find((p) => p.id === mySocketId);
   const amAlive = me?.alive ?? false;
   const isVoting = subPhase === "day-vote";
 
-  const livingPlayers = players.filter((p) => p.alive);
+  const livingPlayers  = players.filter((p) => p.alive);
   const votableTargets = livingPlayers.filter((p) => p.id !== mySocketId);
-  const totalVotes = Object.values(dayVotes).reduce((a, b) => a + b, 0);
+  const totalVotes     = Object.values(dayVotes).reduce((a, b) => a + b, 0);
 
-  const countdownColor =
+  const countdownCls =
     countdown > 20 ? "text-gray-400" : countdown > 8 ? "text-amber-400" : "text-red-400";
 
   return (
@@ -56,20 +68,22 @@ export default function DayPhase({
               </p>
             </div>
           </div>
-          <div className={`text-3xl font-mono font-bold tabular-nums ${countdownColor}`}>
+          <div className={`text-3xl font-mono font-bold tabular-nums ${countdownCls}`}>
             {countdown}s
           </div>
         </div>
 
-        {/* Narration banner — public, shown at start of day */}
+        {/* Narration banner */}
         {narration && !isVoting && (
           <div className="mb-4 px-4 py-3 rounded-xl bg-gray-900/70 border border-gray-700">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-1">Last Night</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-1">
+              Last Night
+            </p>
             <p className="text-gray-200 text-sm leading-relaxed">{narration}</p>
           </div>
         )}
 
-        {/* Detective result — private, only visible to detective */}
+        {/* Detective result — private, only shown when detectiveResult is non-null (filtered in App.tsx) */}
         {detectiveResult && !isVoting && (
           <div className="mb-4 px-4 py-3 rounded-xl bg-amber-950/30 border border-amber-700/40">
             <p className="text-xs font-semibold text-amber-500 uppercase tracking-widest mb-1">
@@ -95,37 +109,35 @@ export default function DayPhase({
 
         {!isVoting ? (
           /* Discussion view */
-          <div className="flex flex-col gap-3">
-            <div>
-              <p className="text-xs text-gray-600 uppercase tracking-widest mb-3 font-medium">
-                Players alive ({livingPlayers.length})
-              </p>
-              <div className="flex flex-col gap-2">
-                {players.map((player) => {
-                  const isMe = player.id === mySocketId;
-                  const isFellowMafia = myRole === "mafia" && mafiaIds.includes(player.id) && !isMe;
-                  return (
-                    <div
-                      key={player.id}
-                      className={`flex items-center gap-3 min-h-[52px] px-4 rounded-xl border ${
-                        player.alive ? "bg-gray-900/60 border-gray-800" : "bg-gray-950 border-gray-900 opacity-30"
-                      }`}
-                    >
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${player.alive ? "bg-gray-700 text-gray-300" : "bg-gray-800 text-gray-600"}`}>
-                        {player.name.charAt(0).toUpperCase()}
-                      </div>
-                      <span className={`text-sm font-medium flex-1 ${player.alive ? "text-white" : "text-gray-600 line-through"}`}>
-                        {player.name}
-                        {isMe && <span className="text-gray-600 text-xs ml-1">(you)</span>}
-                        {!player.connected && player.alive && <span className="text-gray-600 text-xs ml-1">(offline)</span>}
-                      </span>
-                      {isFellowMafia && (
-                        <span className="text-xs text-red-800 font-medium">mafia</span>
-                      )}
+          <div>
+            <p className="text-xs text-gray-600 uppercase tracking-widest mb-3 font-medium">
+              Players alive ({livingPlayers.length})
+            </p>
+            <div className="flex flex-col gap-2">
+              {players.map((player) => {
+                const isMe = player.id === mySocketId;
+                const isFellowMafia = myRole === "mafia" && mafiaIds.includes(player.id) && !isMe;
+                return (
+                  <div
+                    key={player.id}
+                    className={`flex items-center gap-3 min-h-[52px] px-4 rounded-xl border ${
+                      player.alive ? "bg-gray-900/60 border-gray-800" : "bg-gray-950 border-gray-900 opacity-30"
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${player.alive ? "bg-gray-700 text-gray-300" : "bg-gray-800 text-gray-600"}`}>
+                      {player.name.charAt(0).toUpperCase()}
                     </div>
-                  );
-                })}
-              </div>
+                    <span className={`text-sm font-medium flex-1 ${player.alive ? "text-white" : "text-gray-600 line-through"}`}>
+                      {player.name}
+                      {isMe && <span className="text-gray-600 text-xs ml-1">(you)</span>}
+                      {!player.connected && player.alive && <span className="text-gray-600 text-xs ml-1">(offline)</span>}
+                    </span>
+                    {isFellowMafia && (
+                      <span className="text-xs text-red-800 font-medium">mafia</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -149,8 +161,8 @@ export default function DayPhase({
                     <div className="w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-300 flex-shrink-0">
                       {player.name.charAt(0).toUpperCase()}
                     </div>
-                    <span className="text-white text-sm font-medium w-20 truncate">{player.name}</span>
-                    <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <span className="text-white text-sm font-medium flex-1 truncate">{player.name}</span>
+                    <div className="w-24 h-1.5 bg-gray-800 rounded-full overflow-hidden">
                       <div className="h-full bg-amber-600 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
                     </div>
                     <span className="text-gray-500 text-xs font-mono w-4 text-right">{count}</span>
@@ -162,7 +174,6 @@ export default function DayPhase({
                 const voteCount = dayVotes[player.id] ?? 0;
                 const isSelected = myDayVote === player.id;
                 const pct = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
-
                 return (
                   <button
                     key={player.id}
@@ -175,7 +186,7 @@ export default function DayPhase({
                   >
                     {pct > 0 && (
                       <div
-                        className="absolute inset-0 bg-amber-600/8 transition-all duration-500"
+                        className="absolute inset-y-0 left-0 bg-amber-600/8 transition-all duration-500"
                         style={{ width: `${pct}%` }}
                       />
                     )}

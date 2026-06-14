@@ -9,6 +9,8 @@ import NightPhase from "@/pages/NightPhase";
 import EliminationReveal from "@/pages/EliminationReveal";
 import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
+import MuteToggle from "@/components/MuteToggle";
+import { playNightSting, playDayChime } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
 
@@ -34,6 +36,7 @@ export type GamePhase =
 
 export default function App() {
   const socketRef = useRef<Socket | null>(null);
+  const prevPhaseRef = useRef<GamePhase>("home");
   const { toast } = useToast();
 
   const [mySocketId, setMySocketId] = useState("");
@@ -71,6 +74,15 @@ export default function App() {
 
   const [winner, setWinner] = useState<"mafia" | "civilians" | null>(null);
   const [gameOverPlayers, setGameOverPlayers] = useState<Player[]>([]);
+
+  // Phase transition sounds
+  useEffect(() => {
+    if (phase === prevPhaseRef.current) return;
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+    if (phase === "night" && prev !== "home") playNightSting();
+    if (phase === "day-discussion") playDayChime();
+  }, [phase]);
 
   function resetForLobby(newPlayers: Player[], socketId: string) {
     setPlayers(newPlayers);
@@ -234,32 +246,20 @@ export default function App() {
     socketRef.current?.emit("join-room", { code, name });
   }, []);
 
-  const startGame = useCallback(() => { socketRef.current?.emit("start-game"); }, []);
-  const kickPlayer = useCallback((targetId: string) => { socketRef.current?.emit("kick-player", { targetId }); }, []);
+  const startGame           = useCallback(() => { socketRef.current?.emit("start-game"); }, []);
+  const kickPlayer          = useCallback((id: string) => { socketRef.current?.emit("kick-player", { targetId: id }); }, []);
+  const castNightVote       = useCallback((id: string) => { setMyNightVote(id); socketRef.current?.emit("night-vote", { targetId: id }); }, []);
+  const castDoctorProtect   = useCallback((id: string) => { socketRef.current?.emit("doctor-protect", { targetId: id }); }, []);
+  const castDetectiveInvest = useCallback((id: string) => { socketRef.current?.emit("detective-investigate", { targetId: id }); }, []);
+  const castDayVote         = useCallback((id: string) => { setMyDayVote(id); socketRef.current?.emit("day-vote", { targetId: id }); }, []);
+  const playAgain           = useCallback(() => { socketRef.current?.emit("play-again"); }, []);
 
-  const castNightVote = useCallback((targetId: string) => {
-    setMyNightVote(targetId);
-    socketRef.current?.emit("night-vote", { targetId });
-  }, []);
-
-  const castDoctorProtect = useCallback((targetId: string) => {
-    socketRef.current?.emit("doctor-protect", { targetId });
-  }, []);
-
-  const castDetectiveInvestigate = useCallback((targetId: string) => {
-    socketRef.current?.emit("detective-investigate", { targetId });
-  }, []);
-
-  const castDayVote = useCallback((targetId: string) => {
-    setMyDayVote(targetId);
-    socketRef.current?.emit("day-vote", { targetId });
-  }, []);
-
-  const playAgain = useCallback(() => { socketRef.current?.emit("play-again"); }, []);
+  const showMuteToggle = phase !== "home" && phase !== "lobby";
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
       {phase === "home" && <Home onCreateRoom={createRoom} onJoinRoom={joinRoom} />}
+
       {phase === "lobby" && (
         <Lobby
           roomCode={roomCode}
@@ -270,9 +270,11 @@ export default function App() {
           onKickPlayer={kickPlayer}
         />
       )}
+
       {phase === "role-reveal" && myRole && (
         <RoleReveal role={myRole} mafiaNames={mafiaNames} myName={myName} />
       )}
+
       {phase === "night" && myRole && (
         <NightPhase
           players={players}
@@ -286,9 +288,10 @@ export default function App() {
           timerEndsAt={timerEndsAt}
           onNightVote={castNightVote}
           onDoctorProtect={castDoctorProtect}
-          onDetectiveInvestigate={castDetectiveInvestigate}
+          onDetectiveInvestigate={castDetectiveInvest}
         />
       )}
+
       {(phase === "night-result" || phase === "day-result") && elimInfo && (
         <EliminationReveal
           phase={elimInfo.phase}
@@ -297,6 +300,7 @@ export default function App() {
           skipped={elimInfo.skipped}
         />
       )}
+
       {(phase === "day-discussion" || phase === "day-vote") && (
         <DayPhase
           subPhase={phase}
@@ -312,6 +316,7 @@ export default function App() {
           onDayVote={castDayVote}
         />
       )}
+
       {phase === "game-over" && winner && (
         <GameOver
           winner={winner}
@@ -321,6 +326,8 @@ export default function App() {
           onPlayAgain={playAgain}
         />
       )}
+
+      {showMuteToggle && <MuteToggle />}
       <Toaster />
     </div>
   );

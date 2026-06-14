@@ -1,5 +1,7 @@
+import { useEffect, useRef } from "react";
 import type { Player, Role } from "@/App";
 import { useCountdown } from "@/hooks/useCountdown";
+import { playTimerAlert } from "@/lib/audio";
 
 type Props = {
   players: Player[];
@@ -19,28 +21,36 @@ type Props = {
 type TargetRowProps = {
   player: Player;
   isSelected: boolean;
-  accentClass: string;
-  selectedAccentClass: string;
-  avatarClass: string;
+  accentCls: string;
+  avatarCls: string;
   selectedLabel: string;
+  labelCls: string;
   onClick: () => void;
 };
 
-function TargetRow({ player, isSelected, accentClass, selectedAccentClass, avatarClass, selectedLabel, onClick }: TargetRowProps) {
+function TargetRow({ player, isSelected, accentCls, avatarCls, selectedLabel, labelCls, onClick }: TargetRowProps) {
   return (
     <button
       onClick={onClick}
       className={`w-full min-h-[60px] px-4 rounded-xl flex items-center gap-3 transition-all text-left border ${
-        isSelected ? accentClass : "bg-gray-900/60 border-gray-800 hover:border-gray-600"
+        isSelected ? accentCls : "bg-gray-900/60 border-gray-800 hover:border-gray-600"
       }`}
     >
-      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${isSelected ? avatarClass : "bg-gray-800 text-gray-400"}`}>
+      <div
+        className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+          isSelected ? avatarCls : "bg-gray-800 text-gray-400"
+        }`}
+      >
         {player.name.charAt(0).toUpperCase()}
       </div>
       <span className="text-white font-medium text-base">{player.name}</span>
-      {!player.connected && <span className="text-xs text-gray-600 ml-1">(offline)</span>}
+      {!player.connected && (
+        <span className="text-xs text-gray-600 ml-1">(offline)</span>
+      )}
       {isSelected && (
-        <span className={`ml-auto text-xs font-bold tracking-wide ${selectedAccentClass}`}>{selectedLabel}</span>
+        <span className={`ml-auto text-xs font-bold tracking-wide ${labelCls}`}>
+          {selectedLabel}
+        </span>
       )}
     </button>
   );
@@ -61,17 +71,39 @@ export default function NightPhase({
   onDetectiveInvestigate,
 }: Props) {
   const countdown = useCountdown(timerEndsAt);
+  const alertFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (countdown <= 8 && countdown > 0 && !alertFiredRef.current) {
+      alertFiredRef.current = true;
+      playTimerAlert();
+    }
+    if (countdown > 15) alertFiredRef.current = false;
+  }, [countdown]);
+
   const me = players.find((p) => p.id === mySocketId);
   const amAlive = me?.alive ?? false;
+  const hasNightAction = amAlive && myRole !== "civilian";
 
-  const hasNightAction = amAlive && (myRole === "mafia" || myRole === "doctor" || myRole === "detective");
-
-  const mafiaTargets = players.filter((p) => p.alive && p.id !== mySocketId && !mafiaIds.includes(p.id));
+  const mafiaTargets  = players.filter((p) => p.alive && p.id !== mySocketId && !mafiaIds.includes(p.id));
   const doctorTargets = players.filter((p) => p.alive);
-  const detectiveTargets = players.filter((p) => p.alive && p.id !== mySocketId);
+  const detTargets    = players.filter((p) => p.alive && p.id !== mySocketId);
 
-  const countdownColor =
+  const countdownCls =
     countdown > 15 ? "text-gray-400" : countdown > 5 ? "text-amber-400" : "text-red-400";
+
+  const subtitleByRole: Record<Role, string> = {
+    mafia:     "Choose your target",
+    doctor:    "Choose someone to protect",
+    detective: "Choose someone to investigate",
+    civilian:  "The town sleeps…",
+  };
+  const subtitleColor: Record<Role, string> = {
+    mafia:     "#ef4444",
+    doctor:    "#34d399",
+    detective: "#f59e0b",
+    civilian:  "#6b7280",
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center px-4 py-10" style={{ background: "#060710" }}>
@@ -82,19 +114,12 @@ export default function NightPhase({
             <span className="text-xl">🌙</span>
             <div>
               <h1 className="text-xl font-bold text-gray-200 tracking-widest">NIGHT</h1>
-              <p className="text-xs font-medium" style={{
-                color: myRole === "mafia" ? "#ef4444" :
-                       myRole === "doctor" ? "#34d399" :
-                       myRole === "detective" ? "#f59e0b" : "#6b7280"
-              }}>
-                {myRole === "mafia" && amAlive && "Choose your target"}
-                {myRole === "doctor" && amAlive && "Choose someone to protect"}
-                {myRole === "detective" && amAlive && "Choose someone to investigate"}
-                {(!amAlive || myRole === "civilian") && "The town sleeps…"}
+              <p className="text-xs font-medium" style={{ color: amAlive ? subtitleColor[myRole] : "#6b7280" }}>
+                {amAlive ? subtitleByRole[myRole] : "The town sleeps…"}
               </p>
             </div>
           </div>
-          <div className={`text-3xl font-mono font-bold tabular-nums ${countdownColor}`}>
+          <div className={`text-3xl font-mono font-bold tabular-nums ${countdownCls}`}>
             {countdown}s
           </div>
         </div>
@@ -112,16 +137,16 @@ export default function NightPhase({
               {mafiaTargets.length === 0 ? (
                 <p className="text-center text-gray-600 text-sm py-4">No valid targets.</p>
               ) : (
-                mafiaTargets.map((player) => (
+                mafiaTargets.map((p) => (
                   <TargetRow
-                    key={player.id}
-                    player={player}
-                    isSelected={myNightVote === player.id}
-                    accentClass="bg-red-950/60 border-red-700 shadow-[0_0_16px_rgba(185,28,28,0.2)]"
-                    selectedAccentClass="text-red-400"
-                    avatarClass="bg-red-700 text-white"
+                    key={p.id}
+                    player={p}
+                    isSelected={myNightVote === p.id}
+                    accentCls="bg-red-950/60 border-red-700 shadow-[0_0_16px_rgba(185,28,28,0.2)]"
+                    avatarCls="bg-red-700 text-white"
                     selectedLabel="TARGET ✓"
-                    onClick={() => onNightVote(player.id)}
+                    labelCls="text-red-400"
+                    onClick={() => onNightVote(p.id)}
                   />
                 ))
               )}
@@ -138,29 +163,27 @@ export default function NightPhase({
           <>
             <div className="bg-emerald-950/30 border border-emerald-900/40 rounded-xl px-4 py-3 mb-5">
               <p className="text-emerald-400/80 text-xs leading-relaxed text-center">
-                Choose one person to protect tonight. If the Mafia targets them, they survive.
+                Choose one player to protect tonight. If the Mafia targets them, they survive.
+                You can protect yourself.
               </p>
             </div>
             <div className="flex flex-col gap-2 mb-4">
-              {doctorTargets.map((player) => {
-                const isMe = player.id === mySocketId;
-                return (
-                  <TargetRow
-                    key={player.id}
-                    player={{ ...player, name: isMe ? `${player.name} (you)` : player.name }}
-                    isSelected={myDoctorVote === player.id}
-                    accentClass="bg-emerald-950/60 border-emerald-700 shadow-[0_0_16px_rgba(16,185,129,0.15)]"
-                    selectedAccentClass="text-emerald-400"
-                    avatarClass="bg-emerald-700 text-white"
-                    selectedLabel="PROTECT ✓"
-                    onClick={() => onDoctorProtect(player.id)}
-                  />
-                );
-              })}
+              {doctorTargets.map((p) => (
+                <TargetRow
+                  key={p.id}
+                  player={{ ...p, name: p.id === mySocketId ? `${p.name} (you)` : p.name }}
+                  isSelected={myDoctorVote === p.id}
+                  accentCls="bg-emerald-950/60 border-emerald-700 shadow-[0_0_16px_rgba(16,185,129,0.15)]"
+                  avatarCls="bg-emerald-700 text-white"
+                  selectedLabel="PROTECT ✓"
+                  labelCls="text-emerald-400"
+                  onClick={() => onDoctorProtect(p.id)}
+                />
+              ))}
             </div>
             {myDoctorVote && (
-              <p className="text-center text-emerald-600 text-xs">
-                Protection chosen — you can change it before the timer ends.
+              <p className="text-center text-emerald-700 text-xs">
+                Protection chosen — you can change it before time runs out.
               </p>
             )}
           </>
@@ -171,26 +194,26 @@ export default function NightPhase({
           <>
             <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl px-4 py-3 mb-5">
               <p className="text-amber-400/70 text-xs leading-relaxed text-center">
-                Investigate one player tonight. At dawn, you'll learn if they're Mafia.
+                Investigate one player tonight. At dawn, you'll learn privately if they're Mafia.
               </p>
             </div>
             <div className="flex flex-col gap-2 mb-4">
-              {detectiveTargets.map((player) => (
+              {detTargets.map((p) => (
                 <TargetRow
-                  key={player.id}
-                  player={player}
-                  isSelected={myDetectiveVote === player.id}
-                  accentClass="bg-amber-950/50 border-amber-600/60 shadow-[0_0_16px_rgba(180,83,9,0.15)]"
-                  selectedAccentClass="text-amber-400"
-                  avatarClass="bg-amber-600 text-white"
+                  key={p.id}
+                  player={p}
+                  isSelected={myDetectiveVote === p.id}
+                  accentCls="bg-amber-950/50 border-amber-600/60 shadow-[0_0_16px_rgba(180,83,9,0.15)]"
+                  avatarCls="bg-amber-600 text-white"
                   selectedLabel="INVESTIGATE ✓"
-                  onClick={() => onDetectiveInvestigate(player.id)}
+                  labelCls="text-amber-400"
+                  onClick={() => onDetectiveInvestigate(p.id)}
                 />
               ))}
             </div>
             {myDetectiveVote && (
               <p className="text-center text-amber-700 text-xs">
-                Target chosen — you can change it before the timer ends.
+                Target chosen — you can change it before time runs out.
               </p>
             )}
           </>
