@@ -221,7 +221,6 @@ function resolveNight(io: Server, code: string) {
 
   let eliminatedId: string | null = wasProtected ? null : mafiaTargetId;
   let eliminatedName: string | null = null;
-  let eliminatedRole: Role | null = null;
   let protectedName: string | null = null;
 
   if (eliminatedId) {
@@ -229,7 +228,6 @@ function resolveNight(io: Server, code: string) {
     if (target) {
       target.alive = false;
       eliminatedName = target.name;
-      eliminatedRole = target.role;
     }
   }
 
@@ -268,7 +266,6 @@ function resolveNight(io: Server, code: string) {
   io.to(code).emit("night-result", {
     eliminatedId,
     eliminatedName,
-    eliminatedRole,
     players: serializePlayers(room.players),
   });
 
@@ -364,21 +361,18 @@ function resolveDay(io: Server, code: string) {
   }
 
   let eliminatedName: string | null = null;
-  let eliminatedRole: Role | null = null;
 
   if (eliminatedId) {
     const target = room.players.get(eliminatedId);
     if (target) {
       target.alive = false;
       eliminatedName = target.name;
-      eliminatedRole = target.role;
     }
   }
 
   io.to(code).emit("day-result", {
     eliminatedId,
     eliminatedName,
-    eliminatedRole,
     skipped,
     players: serializePlayers(room.players),
   });

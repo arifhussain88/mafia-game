@@ -1,15 +1,11 @@
-import type { Role } from "@/App";
-
 type Props = {
   phase: "night-result" | "day-result";
   eliminatedName: string | null;
-  eliminatedRole: Role | null;
   skipped?: boolean;
 };
 
-export default function EliminationReveal({ phase, eliminatedName, eliminatedRole, skipped }: Props) {
+export default function EliminationReveal({ phase, eliminatedName, skipped }: Props) {
   const isNight = phase === "night-result";
-  const isMafia = eliminatedRole === "mafia";
 
   return (
     <div
@@ -28,34 +24,22 @@ export default function EliminationReveal({ phase, eliminatedName, eliminatedRol
           </>
         ) : eliminatedName ? (
           <>
-            <p className="text-xs text-gray-600 uppercase tracking-widest font-medium mb-6">
+            <p className="text-xs text-gray-600 uppercase tracking-widest font-medium mb-8">
               {isNight ? "The town wakes to find…" : "The town has spoken…"}
             </p>
 
-            <div
-              className={`rounded-2xl border px-6 py-7 mb-6 ${
-                isMafia
-                  ? "bg-red-950/40 border-red-900/50 shadow-[0_0_32px_rgba(127,29,29,0.2)]"
-                  : "bg-gray-900 border-gray-800"
-              }`}
-            >
-              <div
-                className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4 ${
-                  isMafia ? "bg-red-800 text-white" : "bg-gray-700 text-white"
-                }`}
-              >
+            <div className="rounded-2xl border border-gray-800 bg-gray-900 px-6 py-7 mb-6 shadow-[0_0_32px_rgba(0,0,0,0.5)]">
+              <div className="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center text-xl font-bold mx-auto mb-4 text-white">
                 {eliminatedName.charAt(0).toUpperCase()}
               </div>
-              <p className="text-white text-2xl font-bold mb-2">{eliminatedName}</p>
-              <p className={`text-sm font-semibold uppercase tracking-widest ${isMafia ? "text-red-400" : "text-amber-400"}`}>
-                {isMafia ? "🔪 Was Mafia" : "🏘️ Was a Civilian"}
+              <p className="text-white text-2xl font-bold mb-3">{eliminatedName}</p>
+              <p className="text-gray-500 text-sm">
+                {isNight ? "was found dead this morning." : "was voted out by the town."}
               </p>
             </div>
 
-            <p className="text-gray-500 text-sm leading-relaxed">
-              {isMafia
-                ? "The town eliminated a Mafia member. The town grows safer."
-                : "An innocent was taken. The Mafia grows stronger."}
+            <p className="text-gray-600 text-xs leading-relaxed">
+              {isNight ? "The game continues at dawn." : "The game continues through the night."}
             </p>
           </>
         ) : (

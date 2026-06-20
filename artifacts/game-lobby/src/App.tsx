@@ -67,7 +67,6 @@ export default function App() {
 
   const [elimInfo, setElimInfo] = useState<{
     name: string | null;
-    role: Role | null;
     skipped?: boolean;
     phase: "night-result" | "day-result";
   } | null>(null);
@@ -75,7 +74,7 @@ export default function App() {
   const [winner, setWinner] = useState<"mafia" | "civilians" | null>(null);
   const [gameOverPlayers, setGameOverPlayers] = useState<Player[]>([]);
 
-  // Phase transition sounds
+  // Phase transition sounds — ignore first transition from "home"
   useEffect(() => {
     if (phase === prevPhaseRef.current) return;
     const prev = prevPhaseRef.current;
@@ -202,19 +201,19 @@ export default function App() {
 
     socket.on(
       "night-result",
-      (data: { eliminatedId: string; eliminatedName: string; eliminatedRole: Role; players: Player[] }) => {
+      (data: { eliminatedId: string | null; eliminatedName: string | null; players: Player[] }) => {
         setPhase("night-result");
         setPlayers(data.players);
-        setElimInfo({ name: data.eliminatedName, role: data.eliminatedRole, phase: "night-result" });
+        setElimInfo({ name: data.eliminatedName, phase: "night-result" });
       },
     );
 
     socket.on(
       "day-result",
-      (data: { eliminatedId: string | null; eliminatedName: string | null; eliminatedRole: Role | null; skipped: boolean; players: Player[] }) => {
+      (data: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; players: Player[] }) => {
         setPhase("day-result");
         setPlayers(data.players);
-        setElimInfo({ name: data.eliminatedName, role: data.eliminatedRole, skipped: data.skipped, phase: "day-result" });
+        setElimInfo({ name: data.eliminatedName, skipped: data.skipped, phase: "day-result" });
       },
     );
 
@@ -296,7 +295,6 @@ export default function App() {
         <EliminationReveal
           phase={elimInfo.phase}
           eliminatedName={elimInfo.name}
-          eliminatedRole={elimInfo.role}
           skipped={elimInfo.skipped}
         />
       )}

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { Player, Role } from "@/App";
 import { useCountdown } from "@/hooks/useCountdown";
 import { playTimerAlert } from "@/lib/audio";
+import PlayerCircle, { type ActionMode } from "@/components/PlayerCircle";
 
 type Props = {
   players: Player[];
@@ -18,43 +19,18 @@ type Props = {
   onDetectiveInvestigate: (targetId: string) => void;
 };
 
-type TargetRowProps = {
-  player: Player;
-  isSelected: boolean;
-  accentCls: string;
-  avatarCls: string;
-  selectedLabel: string;
-  labelCls: string;
-  onClick: () => void;
+const INSTRUCTION: Record<Role, string> = {
+  mafia:     "Tap a player to choose your kill target",
+  doctor:    "Tap anyone to protect them — you can protect yourself",
+  detective: "Tap a player to investigate them tonight",
+  civilian:  "Wait for dawn…",
 };
-
-function TargetRow({ player, isSelected, accentCls, avatarCls, selectedLabel, labelCls, onClick }: TargetRowProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full min-h-[60px] px-4 rounded-xl flex items-center gap-3 transition-all text-left border ${
-        isSelected ? accentCls : "bg-gray-900/60 border-gray-800 hover:border-gray-600"
-      }`}
-    >
-      <div
-        className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-          isSelected ? avatarCls : "bg-gray-800 text-gray-400"
-        }`}
-      >
-        {player.name.charAt(0).toUpperCase()}
-      </div>
-      <span className="text-white font-medium text-base">{player.name}</span>
-      {!player.connected && (
-        <span className="text-xs text-gray-600 ml-1">(offline)</span>
-      )}
-      {isSelected && (
-        <span className={`ml-auto text-xs font-bold tracking-wide ${labelCls}`}>
-          {selectedLabel}
-        </span>
-      )}
-    </button>
-  );
-}
+const INSTRUCTION_COLOR: Record<Role, string> = {
+  mafia:     "text-red-600/80",
+  doctor:    "text-emerald-600/80",
+  detective: "text-amber-600/70",
+  civilian:  "text-gray-600",
+};
 
 export default function NightPhase({
   players,
@@ -83,21 +59,30 @@ export default function NightPhase({
 
   const me = players.find((p) => p.id === mySocketId);
   const amAlive = me?.alive ?? false;
-  const hasNightAction = amAlive && myRole !== "civilian";
 
-  const mafiaTargets  = players.filter((p) => p.alive && p.id !== mySocketId && !mafiaIds.includes(p.id));
-  const doctorTargets = players.filter((p) => p.alive);
-  const detTargets    = players.filter((p) => p.alive && p.id !== mySocketId);
+  const actionMode: ActionMode = (() => {
+    if (!amAlive) return "none";
+    if (myRole === "mafia")     return "mafia-kill";
+    if (myRole === "doctor")    return "doctor-protect";
+    if (myRole === "detective") return "detective-investigate";
+    return "none";
+  })();
+
+  const selectedId =
+    myRole === "mafia"     ? myNightVote
+    : myRole === "doctor"  ? myDoctorVote
+    : myRole === "detective" ? myDetectiveVote
+    : null;
+
+  function handleSelect(targetId: string) {
+    if (myRole === "mafia")     onNightVote(targetId);
+    if (myRole === "doctor")    onDoctorProtect(targetId);
+    if (myRole === "detective") onDetectiveInvestigate(targetId);
+  }
 
   const countdownCls =
     countdown > 15 ? "text-gray-400" : countdown > 5 ? "text-amber-400" : "text-red-400";
 
-  const subtitleByRole: Record<Role, string> = {
-    mafia:     "Choose your target",
-    doctor:    "Choose someone to protect",
-    detective: "Choose someone to investigate",
-    civilian:  "The town sleeps…",
-  };
   const subtitleColor: Record<Role, string> = {
     mafia:     "#ef4444",
     doctor:    "#34d399",
@@ -106,16 +91,20 @@ export default function NightPhase({
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center px-4 py-10" style={{ background: "#060710" }}>
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex flex-col items-center px-4 py-8" style={{ background: "#060710" }}>
+      <div className="w-full max-w-sm flex flex-col items-center gap-4">
 
-        <div className="flex items-center justify-between mb-8">
+        {/* Header */}
+        <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
             <span className="text-xl">🌙</span>
             <div>
               <h1 className="text-xl font-bold text-gray-200 tracking-widest">NIGHT</h1>
-              <p className="text-xs font-medium" style={{ color: amAlive ? subtitleColor[myRole] : "#6b7280" }}>
-                {amAlive ? subtitleByRole[myRole] : "The town sleeps…"}
+              <p
+                className="text-xs font-medium"
+                style={{ color: amAlive ? subtitleColor[myRole] : "#6b7280" }}
+              >
+                {amAlive ? subtitleColor && myRole : "Eliminated — spectating"}
               </p>
             </div>
           </div>
@@ -124,137 +113,49 @@ export default function NightPhase({
           </div>
         </div>
 
-        {!amAlive && (
-          <div className="bg-gray-900/60 border border-gray-800 rounded-xl px-4 py-3 mb-5 text-center">
-            <p className="text-gray-500 text-sm">You're eliminated — watching.</p>
-          </div>
-        )}
+        {/* Role instruction */}
+        <p className={`text-xs text-center ${amAlive ? INSTRUCTION_COLOR[myRole] : "text-gray-700"}`}>
+          {amAlive ? INSTRUCTION[myRole] : "You're eliminated — watching the night play out."}
+        </p>
 
-        {/* ── Mafia targeting ── */}
-        {myRole === "mafia" && amAlive && (
-          <>
-            <div className="flex flex-col gap-2 mb-6">
-              {mafiaTargets.length === 0 ? (
-                <p className="text-center text-gray-600 text-sm py-4">No valid targets.</p>
+        {/* Circle */}
+        <PlayerCircle
+          players={players}
+          mySocketId={mySocketId}
+          myRole={myRole}
+          mafiaIds={mafiaIds}
+          selectedId={selectedId}
+          actionMode={actionMode}
+          onSelect={handleSelect}
+        />
+
+        {/* Status below circle */}
+        <div className="text-center min-h-[32px] flex flex-col items-center justify-center gap-1">
+          {myRole === "mafia" && amAlive && (
+            <>
+              {selectedId ? (
+                <p className="text-red-700 text-xs">Target locked in — you can change it before time runs out.</p>
               ) : (
-                mafiaTargets.map((p) => (
-                  <TargetRow
-                    key={p.id}
-                    player={p}
-                    isSelected={myNightVote === p.id}
-                    accentCls="bg-red-950/60 border-red-700 shadow-[0_0_16px_rgba(185,28,28,0.2)]"
-                    avatarCls="bg-red-700 text-white"
-                    selectedLabel="TARGET ✓"
-                    labelCls="text-red-400"
-                    onClick={() => onNightVote(p.id)}
-                  />
-                ))
+                <p className="text-gray-700 text-xs">No target selected yet.</p>
               )}
-            </div>
-            <p className="text-center text-gray-700 text-xs">
+              <p className="text-gray-700 text-xs">
+                {nightVoteStatus.voted} of {nightVoteStatus.total} Mafia{" "}
+                {nightVoteStatus.voted === 1 ? "has" : "have"} voted
+              </p>
+            </>
+          )}
+          {myRole === "doctor" && amAlive && selectedId && (
+            <p className="text-emerald-700 text-xs">Protection chosen — you can change it before time runs out.</p>
+          )}
+          {myRole === "detective" && amAlive && selectedId && (
+            <p className="text-amber-700 text-xs">Target chosen — result arrives at dawn.</p>
+          )}
+          {!amAlive && nightVoteStatus.voted > 0 && (
+            <p className="text-gray-700 text-xs">
               {nightVoteStatus.voted} of {nightVoteStatus.total} Mafia{" "}
               {nightVoteStatus.voted === 1 ? "has" : "have"} voted
             </p>
-          </>
-        )}
-
-        {/* ── Doctor protect ── */}
-        {myRole === "doctor" && amAlive && (
-          <>
-            <div className="bg-emerald-950/30 border border-emerald-900/40 rounded-xl px-4 py-3 mb-5">
-              <p className="text-emerald-400/80 text-xs leading-relaxed text-center">
-                Choose one player to protect tonight. If the Mafia targets them, they survive.
-                You can protect yourself.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 mb-4">
-              {doctorTargets.map((p) => (
-                <TargetRow
-                  key={p.id}
-                  player={{ ...p, name: p.id === mySocketId ? `${p.name} (you)` : p.name }}
-                  isSelected={myDoctorVote === p.id}
-                  accentCls="bg-emerald-950/60 border-emerald-700 shadow-[0_0_16px_rgba(16,185,129,0.15)]"
-                  avatarCls="bg-emerald-700 text-white"
-                  selectedLabel="PROTECT ✓"
-                  labelCls="text-emerald-400"
-                  onClick={() => onDoctorProtect(p.id)}
-                />
-              ))}
-            </div>
-            {myDoctorVote && (
-              <p className="text-center text-emerald-700 text-xs">
-                Protection chosen — you can change it before time runs out.
-              </p>
-            )}
-          </>
-        )}
-
-        {/* ── Detective investigate ── */}
-        {myRole === "detective" && amAlive && (
-          <>
-            <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl px-4 py-3 mb-5">
-              <p className="text-amber-400/70 text-xs leading-relaxed text-center">
-                Investigate one player tonight. At dawn, you'll learn privately if they're Mafia.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 mb-4">
-              {detTargets.map((p) => (
-                <TargetRow
-                  key={p.id}
-                  player={p}
-                  isSelected={myDetectiveVote === p.id}
-                  accentCls="bg-amber-950/50 border-amber-600/60 shadow-[0_0_16px_rgba(180,83,9,0.15)]"
-                  avatarCls="bg-amber-600 text-white"
-                  selectedLabel="INVESTIGATE ✓"
-                  labelCls="text-amber-400"
-                  onClick={() => onDetectiveInvestigate(p.id)}
-                />
-              ))}
-            </div>
-            {myDetectiveVote && (
-              <p className="text-center text-amber-700 text-xs">
-                Target chosen — you can change it before time runs out.
-              </p>
-            )}
-          </>
-        )}
-
-        {/* ── Town sleeps ── */}
-        {!hasNightAction && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="text-5xl mb-6 opacity-40 select-none">😴</div>
-            <h2 className="text-lg font-semibold text-gray-400 mb-2">The town sleeps…</h2>
-            <p className="text-gray-600 text-sm max-w-xs leading-relaxed">
-              The Mafia moves in the shadows. Wait for dawn.
-            </p>
-            <p className="mt-8 text-gray-700 text-xs">
-              {nightVoteStatus.voted > 0
-                ? `${nightVoteStatus.voted} of ${nightVoteStatus.total} Mafia ${nightVoteStatus.voted === 1 ? "has" : "have"} voted`
-                : ""}
-            </p>
-          </div>
-        )}
-
-        {/* Player chip strip */}
-        <div className="mt-8 pt-6 border-t border-gray-900">
-          <div className="flex flex-wrap gap-2">
-            {players.map((p) => (
-              <div
-                key={p.id}
-                className={`text-xs px-2 py-1 rounded-full border ${
-                  !p.alive
-                    ? "border-gray-800 text-gray-700 line-through"
-                    : !p.connected
-                    ? "border-gray-800 text-gray-600"
-                    : myRole === "mafia" && mafiaIds.includes(p.id)
-                    ? "border-red-900/50 text-red-600 bg-red-950/20"
-                    : "border-gray-800 text-gray-500"
-                }`}
-              >
-                {p.name}
-              </div>
-            ))}
-          </div>
+          )}
         </div>
       </div>
     </div>
