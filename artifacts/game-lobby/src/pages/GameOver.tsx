@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import type { Player, Role } from "@/App";
+import PlayerCircle from "@/components/PlayerCircle";
 
 type Props = {
   winner: "mafia" | "civilians";
@@ -8,119 +10,129 @@ type Props = {
   onPlayAgain: () => void;
 };
 
-const ROLE_CONFIG: Record<Role, { label: string; emoji: string; sectionTitle: string; rowCls: string; avatarAliveCls: string; avatarDeadCls: string; iconCls: string }> = {
-  mafia: {
-    label: "Mafia",
-    emoji: "🔪",
-    sectionTitle: "Mafia",
-    rowCls: "bg-red-950/25 border-red-900/40",
-    avatarAliveCls: "bg-red-700 text-white",
-    avatarDeadCls: "bg-red-950 text-red-800",
-    iconCls: "text-red-500",
-  },
-  detective: {
-    label: "Detective",
-    emoji: "🔍",
-    sectionTitle: "Detective",
-    rowCls: "bg-amber-950/20 border-amber-900/30",
-    avatarAliveCls: "bg-amber-600 text-white",
-    avatarDeadCls: "bg-amber-950 text-amber-800",
-    iconCls: "text-amber-500",
-  },
-  doctor: {
-    label: "Doctor",
-    emoji: "💊",
-    sectionTitle: "Doctor",
-    rowCls: "bg-emerald-950/20 border-emerald-900/30",
-    avatarAliveCls: "bg-emerald-700 text-white",
-    avatarDeadCls: "bg-emerald-950 text-emerald-800",
-    iconCls: "text-emerald-500",
-  },
-  civilian: {
-    label: "Civilian",
-    emoji: "🏘️",
-    sectionTitle: "Civilians",
-    rowCls: "bg-gray-900/60 border-gray-800",
-    avatarAliveCls: "bg-gray-600 text-white",
-    avatarDeadCls: "bg-gray-800 text-gray-600",
-    iconCls: "text-gray-500",
-  },
-};
-
 const ROLE_ORDER: Role[] = ["mafia", "detective", "doctor", "civilian"];
 
-function RoleSection({ role, players, mySocketId }: { role: Role; players: Player[]; mySocketId: string }) {
-  if (players.length === 0) return null;
-  const cfg = ROLE_CONFIG[role];
-
-  return (
-    <div className="mb-4">
-      <p className={`text-xs uppercase tracking-widest font-semibold mb-2 px-1 ${cfg.iconCls}`}>
-        {cfg.sectionTitle}
-      </p>
-      <div className="flex flex-col gap-2">
-        {players.map((player) => {
-          const isMe = player.id === mySocketId;
-          return (
-            <div key={player.id} className={`flex items-center gap-3 min-h-[52px] px-4 rounded-xl border ${cfg.rowCls}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${player.alive ? cfg.avatarAliveCls : cfg.avatarDeadCls}`}>
-                {player.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium ${player.alive ? "text-white" : "text-gray-600 line-through"}`}>
-                  {player.name}
-                  {isMe && <span className="text-gray-600 text-xs ml-1">(you)</span>}
-                </p>
-                {!player.alive && <p className="text-xs text-gray-700">eliminated</p>}
-              </div>
-              <span className={`text-base ${cfg.iconCls}`}>{cfg.emoji}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+const ROLE_META: Record<Role, { label: string; sectionTitle: string; accentCls: string; dotCls: string }> = {
+  mafia:     { label: "Mafia",     sectionTitle: "Mafia",     accentCls: "text-red-400",    dotCls: "bg-red-600" },
+  detective: { label: "Detective", sectionTitle: "Detective", accentCls: "text-amber-400",  dotCls: "bg-amber-600" },
+  doctor:    { label: "Doctor",    sectionTitle: "Doctor",    accentCls: "text-emerald-400", dotCls: "bg-emerald-600" },
+  civilian:  { label: "Civilian",  sectionTitle: "Civilians", accentCls: "text-gray-400",   dotCls: "bg-gray-500" },
+};
 
 export default function GameOver({ winner, players, mySocketId, isHost, onPlayAgain }: Props) {
+  const [revealAll, setRevealAll] = useState(false);
+  const [showResult, setShowResult] = useState(false);
+  const [showRoles, setShowRoles] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setRevealAll(true),  1200);
+    const t2 = setTimeout(() => setShowResult(true), 2200);
+    const t3 = setTimeout(() => setShowRoles(true),  2800);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, []);
+
   const mafiaWon = winner === "mafia";
+  const mafiaIds = players.filter((p) => p.role === "mafia").map((p) => p.id);
+  const myRole = players.find((p) => p.id === mySocketId)?.role ?? null;
 
   const byRole = (role: Role) => players.filter((p) => p.role === role);
 
   return (
-    <div className="min-h-screen flex flex-col items-center px-4 py-10" style={{ background: "#0a0a0b" }}>
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex flex-col items-center px-4 py-8" style={{ background: "#0a0a0b" }}>
+      <div className="w-full max-w-sm flex flex-col items-center gap-4">
 
-        {/* Result banner */}
+        {/* Pre-reveal suspense label */}
+        {!showResult && (
+          <div className="text-center py-1">
+            <p className="text-gray-700 text-xs uppercase tracking-widest animate-pulse">Game Over — Revealing Roles…</p>
+          </div>
+        )}
+
+        {/* Winner result banner */}
+        {showResult && (
+          <div
+            className={`w-full rounded-2xl border px-6 py-5 text-center transition-opacity duration-700 ${
+              mafiaWon
+                ? "bg-red-950/30 border-red-900/50 shadow-[0_0_48px_rgba(127,29,29,0.15)]"
+                : "bg-amber-950/20 border-amber-900/30 shadow-[0_0_48px_rgba(120,53,15,0.1)]"
+            }`}
+            style={{ opacity: showResult ? 1 : 0 }}
+          >
+            <div className="text-4xl mb-2">{mafiaWon ? "🔪" : "🏆"}</div>
+            <h1 className={`text-3xl font-bold mb-1 ${mafiaWon ? "text-red-400" : "text-amber-400"}`}>
+              {mafiaWon ? "Mafia Wins" : "Town Wins"}
+            </h1>
+            <p className="text-gray-500 text-xs leading-relaxed">
+              {mafiaWon
+                ? "The Mafia seized control of the town."
+                : "The civilians uncovered and eliminated all Mafia."}
+            </p>
+          </div>
+        )}
+
+        {/* Circle of players — all cards start face-down, flip simultaneously */}
+        <PlayerCircle
+          players={players}
+          mySocketId={mySocketId}
+          myRole={myRole}
+          mafiaIds={mafiaIds}
+          selectedId={null}
+          actionMode="none"
+          onSelect={() => {}}
+          revealAll={revealAll}
+        />
+
+        {/* Role breakdown list — fades in after flip settles */}
         <div
-          className={`rounded-2xl border px-6 py-8 text-center mb-6 ${
-            mafiaWon
-              ? "bg-red-950/30 border-red-900/50 shadow-[0_0_48px_rgba(127,29,29,0.15)]"
-              : "bg-amber-950/20 border-amber-900/30 shadow-[0_0_48px_rgba(120,53,15,0.1)]"
-          }`}
+          className="w-full"
+          style={{
+            transition: "opacity 0.7s ease",
+            opacity: showRoles ? 1 : 0,
+          }}
         >
-          <div className="text-5xl mb-3">{mafiaWon ? "🔪" : "🏆"}</div>
-          <h1 className={`text-4xl font-bold mb-2 ${mafiaWon ? "text-red-400" : "text-amber-400"}`}>
-            {mafiaWon ? "Mafia Wins" : "Town Wins"}
-          </h1>
-          <p className="text-gray-500 text-sm leading-relaxed">
-            {mafiaWon
-              ? "The Mafia seized control of the town."
-              : "The civilians uncovered and eliminated all Mafia."}
-          </p>
+          {ROLE_ORDER.map((role) => {
+            const group = byRole(role);
+            if (group.length === 0) return null;
+            const meta = ROLE_META[role];
+            return (
+              <div key={role} className="mb-3">
+                <p className={`text-[10px] uppercase tracking-widest font-semibold mb-1.5 px-1 ${meta.accentCls}`}>
+                  {meta.sectionTitle}
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {group.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/3 border border-white/5"
+                    >
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${meta.dotCls} ${p.alive ? "" : "opacity-40"}`} />
+                      <p
+                        className={`text-sm font-medium flex-1 min-w-0 truncate ${
+                          p.alive ? "text-white" : "text-gray-600 line-through"
+                        }`}
+                      >
+                        {p.name}
+                        {p.id === mySocketId && (
+                          <span className="text-gray-600 text-xs ml-1">(you)</span>
+                        )}
+                      </p>
+                      {!p.alive && (
+                        <span className="text-gray-700 text-xs">eliminated</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Role sections in order */}
-        {ROLE_ORDER.map((role) => (
-          <RoleSection key={role} role={role} players={byRole(role)} mySocketId={mySocketId} />
-        ))}
-
         {/* Play Again */}
-        <div className="mt-2">
+        <div className="w-full mt-1 pb-4">
           {isHost ? (
             <button
               onClick={onPlayAgain}
-              className="w-full min-h-[56px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-lg font-semibold transition-colors"
+              className="w-full min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-base font-semibold transition-colors"
             >
               Play Again
             </button>
