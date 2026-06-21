@@ -39,9 +39,22 @@ const ROLE_META: Record<Role, {
   },
 };
 
+function useCardWidth(): number {
+  const [width, setWidth] = useState(() =>
+    typeof window !== "undefined" && window.innerWidth >= 768 ? 260 : 200
+  );
+  useEffect(() => {
+    function update() { setWidth(window.innerWidth >= 768 ? 260 : 200); }
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  return width;
+}
+
 export default function RoleReveal({ role, mafiaNames, myName }: Props) {
   const [flipped, setFlipped] = useState(false);
   const meta = ROLE_META[role];
+  const cardWidth = useCardWidth();
 
   useEffect(() => {
     const t = setTimeout(() => setFlipped(true), 1200);
@@ -55,40 +68,38 @@ export default function RoleReveal({ role, mafiaNames, myName }: Props) {
       className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
       style={{ background: "#0a0a0b" }}
     >
-      <p className="text-gray-600 text-xs mb-10 tracking-widest uppercase font-medium">
+      <p className="text-gray-600 text-xs md:text-sm mb-10 tracking-widest uppercase font-medium">
         Your Role
       </p>
 
-      {/* Illustrated flip card */}
       <RoleCard
         role={role}
         flipped={flipped}
-        width={200}
+        width={cardWidth}
         animate
       />
 
-      {/* Role info — fades in after the flip settles */}
       <div
         style={{
           marginTop: 28,
           width: "100%",
-          maxWidth: 300,
+          maxWidth: cardWidth + 80,
           transition: "opacity 0.5s ease 0.4s",
           opacity: flipped ? 1 : 0,
         }}
       >
-        <p className={`text-center text-sm leading-relaxed text-gray-400`}>
+        <p className="text-center text-sm md:text-base leading-relaxed text-gray-400">
           {meta.description}
         </p>
         <p
-          className={`text-center text-xs mt-3 ${meta.accentCls}`}
+          className={`text-center text-xs md:text-sm mt-3 ${meta.accentCls}`}
           style={{ opacity: 0.8 }}
         >
           {footnote}
         </p>
       </div>
 
-      <p className="mt-10 text-gray-700 text-xs animate-pulse">
+      <p className="mt-10 text-gray-700 text-xs md:text-sm animate-pulse">
         Night begins soon…
       </p>
     </div>

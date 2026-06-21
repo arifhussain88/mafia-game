@@ -16,7 +16,6 @@ export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
   const [allDone, setAllDone] = useState(false);
 
   useEffect(() => {
-    // Reset when lines change (e.g., new game round)
     setCompletedLines([]);
     setCurrentLineIndex(0);
     setCurrentCharIndex(0);
@@ -34,13 +33,11 @@ export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
     const line = lines[currentLineIndex];
 
     if (currentCharIndex < line.length) {
-      // Type next character
       const t = setTimeout(() => {
         setCurrentCharIndex((c) => c + 1);
       }, CHAR_DELAY_MS);
       return () => clearTimeout(t);
     } else {
-      // Line fully typed — pause then move to next
       const t = setTimeout(() => {
         setCompletedLines((prev) => [...prev, line]);
         setCurrentLineIndex((i) => i + 1);
@@ -50,7 +47,6 @@ export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
     }
   }, [lines, currentLineIndex, currentCharIndex]);
 
-  // The line currently being typed (partial)
   const activePartial =
     currentLineIndex < lines.length
       ? lines[currentLineIndex].slice(0, currentCharIndex)
@@ -61,12 +57,12 @@ export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
       className="min-h-screen flex flex-col items-center justify-center px-6 py-12"
       style={{ background: "#060710" }}
     >
-      <div className="w-full max-w-md flex flex-col gap-8">
+      <div className="w-full max-w-md md:max-w-xl flex flex-col gap-8">
 
         {/* Header */}
         <div className="text-center">
-          <span className="text-4xl">🌙</span>
-          <p className="text-gray-700 text-xs uppercase tracking-[0.2em] mt-3 font-medium">
+          <span className="text-4xl md:text-5xl">🌙</span>
+          <p className="text-gray-700 text-xs md:text-sm uppercase tracking-[0.2em] mt-3 font-medium">
             Night Report
           </p>
         </div>
@@ -78,11 +74,11 @@ export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
         />
 
         {/* Typewriter lines */}
-        <div className="flex flex-col gap-5 min-h-[120px]">
+        <div className="flex flex-col gap-5 min-h-[120px] md:min-h-[160px]">
           {completedLines.map((line, i) => (
             <p
               key={i}
-              className="text-amber-200/80 text-base leading-relaxed font-medium"
+              className="text-amber-200/80 text-base md:text-lg leading-relaxed font-medium"
               style={{ textShadow: "0 0 20px rgba(200,160,74,0.2)" }}
             >
               {line}
@@ -91,7 +87,7 @@ export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
 
           {activePartial !== null && (
             <p
-              className="text-amber-200/80 text-base leading-relaxed font-medium"
+              className="text-amber-200/80 text-base md:text-lg leading-relaxed font-medium"
               style={{ textShadow: "0 0 20px rgba(200,160,74,0.2)" }}
             >
               {activePartial}
@@ -113,7 +109,7 @@ export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
             {isHost ? (
               <button
                 onClick={onBeginDay}
-                className="mt-4 w-full py-4 rounded-2xl font-bold text-base tracking-wide text-gray-900 transition-all active:scale-95"
+                className="mt-4 w-full max-w-xs py-4 rounded-2xl font-bold text-base md:text-lg tracking-wide text-gray-900 transition-all active:scale-95"
                 style={{
                   background: "linear-gradient(135deg, #c8a04a 0%, #e8c46a 50%, #c8a04a 100%)",
                   boxShadow: "0 0 24px rgba(200,160,74,0.35)",
@@ -122,7 +118,7 @@ export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
                 ☀️ Begin Day
               </button>
             ) : (
-              <p className="text-gray-600 text-sm mt-4 animate-pulse">
+              <p className="text-gray-600 text-sm md:text-base mt-4 animate-pulse">
                 Waiting for the host to begin the day…
               </p>
             )}

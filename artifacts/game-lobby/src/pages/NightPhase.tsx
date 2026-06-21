@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Player, Role } from "@/App";
 import { useCountdown } from "@/hooks/useCountdown";
+import { useCircleSize } from "@/hooks/useCircleSize";
 import { playTimerAlert } from "@/lib/audio";
 import PlayerCircle, { type ActionMode } from "@/components/PlayerCircle";
 
@@ -67,13 +68,13 @@ export default function NightPhase({
 }: Props) {
   const countdown = useCountdown(timerEndsAt);
   const alertFiredRef = useRef(false);
+  const circleSize = useCircleSize();
 
   const me = players.find((p) => p.id === mySocketId);
   const amAlive = me?.alive ?? false;
   const activeRole = STEP_ROLE[phase];
   const isMyTurn = myRole === activeRole && amAlive;
 
-  // Timer alert only fires for the active role
   useEffect(() => {
     if (!isMyTurn) return;
     if (countdown <= 8 && countdown > 0 && !alertFiredRef.current) {
@@ -86,8 +87,6 @@ export default function NightPhase({
   // Active-role screen
   if (isMyTurn) {
     const roleColor = ROLE_COLOR[myRole];
-
-    // For detective: once they have a result, disable further action
     const detHasResult = myRole === "detective" && detectiveResult !== null;
 
     const actionMode: ActionMode = (() => {
@@ -99,8 +98,8 @@ export default function NightPhase({
     })();
 
     const selectedId =
-      myRole === "mafia"      ? myNightVote
-      : myRole === "doctor"   ? myDoctorVote
+      myRole === "mafia"       ? myNightVote
+      : myRole === "doctor"    ? myDoctorVote
       : myRole === "detective" ? myDetectiveVote
       : null;
 
@@ -114,121 +113,120 @@ export default function NightPhase({
       countdown > 15 ? "text-gray-400" : countdown > 5 ? "text-amber-400" : "text-red-400";
 
     return (
-      <div className="min-h-screen flex flex-col items-center px-4 py-8" style={{ background: "#060710" }}>
-        <div className="w-full max-w-sm flex flex-col items-center gap-4">
+      <div className="min-h-screen flex flex-col items-center px-4 py-6 md:py-10" style={{ background: "#060710" }}>
 
-          {/* Header */}
+        {/* Header */}
+        <div className="w-full max-w-sm md:max-w-2xl mb-3 md:mb-4">
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
-              <span className="text-xl">🌙</span>
+              <span className="text-xl md:text-2xl">🌙</span>
               <div>
-                <h1 className="text-xl font-bold text-gray-200 tracking-widest">NIGHT</h1>
-                <p className="text-xs font-semibold tracking-wider" style={{ color: roleColor }}>
+                <h1 className="text-xl md:text-2xl font-bold text-gray-200 tracking-widest">NIGHT</h1>
+                <p className="text-xs md:text-sm font-semibold tracking-wider" style={{ color: roleColor }}>
                   {ROLE_LABEL[myRole]}
                 </p>
               </div>
             </div>
-            <div className={`text-3xl font-mono font-bold tabular-nums ${countdownCls}`}>
+            <div className={`text-3xl md:text-4xl font-mono font-bold tabular-nums ${countdownCls}`}>
               {countdown}s
             </div>
           </div>
-
-          {/* Instruction */}
-          <p className="text-xs text-center text-gray-500">
-            {detHasResult ? "Investigation complete." : INSTRUCTION[phase]}
-          </p>
-
-          {/* Circle */}
-          <PlayerCircle
-            players={players}
-            mySocketId={mySocketId}
-            myRole={myRole}
-            mafiaIds={mafiaIds}
-            selectedId={selectedId}
-            actionMode={actionMode}
-            onSelect={handleSelect}
-          />
-
-          {/* Status / detective inline result */}
-          <div className="text-center min-h-[48px] flex flex-col items-center justify-center gap-1 w-full">
-            {myRole === "detective" && detectiveResult && (
-              <div
-                className="rounded-xl border px-5 py-3 w-full"
-                style={{
-                  background: detectiveResult.isMafia ? "rgba(127,0,0,0.18)" : "rgba(0,60,30,0.18)",
-                  borderColor: detectiveResult.isMafia ? "#7f1d1d" : "#134e2a",
-                }}
-              >
-                <p className="text-xs text-gray-500 mb-1 uppercase tracking-widest">Investigation result</p>
-                <p
-                  className="text-base font-bold"
-                  style={{ color: detectiveResult.isMafia ? "#ef4444" : "#34d399" }}
-                >
-                  {detectiveResult.isMafia
-                    ? `${detectiveResult.targetName} is Mafia.`
-                    : `${detectiveResult.targetName} is not Mafia.`}
-                </p>
-                <p className="text-xs text-gray-600 mt-1">This result is yours alone. Never share it publicly.</p>
-              </div>
-            )}
-
-            {myRole === "mafia" && !detHasResult && (
-              <>
-                {selectedId ? (
-                  <p className="text-red-700 text-xs">Target locked in — you can change it before time runs out.</p>
-                ) : (
-                  <p className="text-gray-700 text-xs">No target selected yet.</p>
-                )}
-                {nightVoteStatus.total > 1 && (
-                  <p className="text-gray-700 text-xs">
-                    {nightVoteStatus.voted} of {nightVoteStatus.total} Mafia{" "}
-                    {nightVoteStatus.voted === 1 ? "has" : "have"} chosen
-                  </p>
-                )}
-              </>
-            )}
-
-            {myRole === "doctor" && selectedId && (
-              <p className="text-emerald-700 text-xs">Protection chosen — you can change it before time runs out.</p>
-            )}
-          </div>
-
         </div>
+
+        {/* Instruction */}
+        <p className="text-xs md:text-sm text-center text-gray-500 mb-3 md:mb-5 max-w-sm md:max-w-lg">
+          {detHasResult ? "Investigation complete." : INSTRUCTION[phase]}
+        </p>
+
+        {/* Circle */}
+        <PlayerCircle
+          players={players}
+          mySocketId={mySocketId}
+          myRole={myRole}
+          mafiaIds={mafiaIds}
+          selectedId={selectedId}
+          actionMode={actionMode}
+          onSelect={handleSelect}
+          circleSize={circleSize}
+        />
+
+        {/* Status / detective inline result */}
+        <div className="text-center min-h-[48px] flex flex-col items-center justify-center gap-1 w-full max-w-sm md:max-w-lg mt-3">
+          {myRole === "detective" && detectiveResult && (
+            <div
+              className="rounded-xl border px-5 py-3 w-full"
+              style={{
+                background: detectiveResult.isMafia ? "rgba(127,0,0,0.18)" : "rgba(0,60,30,0.18)",
+                borderColor: detectiveResult.isMafia ? "#7f1d1d" : "#134e2a",
+              }}
+            >
+              <p className="text-xs md:text-sm text-gray-500 mb-1 uppercase tracking-widest">Investigation result</p>
+              <p
+                className="text-base md:text-lg font-bold"
+                style={{ color: detectiveResult.isMafia ? "#ef4444" : "#34d399" }}
+              >
+                {detectiveResult.isMafia
+                  ? `${detectiveResult.targetName} is Mafia.`
+                  : `${detectiveResult.targetName} is not Mafia.`}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">This result is yours alone. Never share it publicly.</p>
+            </div>
+          )}
+
+          {myRole === "mafia" && !detHasResult && (
+            <>
+              {selectedId ? (
+                <p className="text-red-700 text-xs md:text-sm">Target locked in — you can change it before time runs out.</p>
+              ) : (
+                <p className="text-gray-700 text-xs md:text-sm">No target selected yet.</p>
+              )}
+              {nightVoteStatus.total > 1 && (
+                <p className="text-gray-700 text-xs md:text-sm">
+                  {nightVoteStatus.voted} of {nightVoteStatus.total} Mafia{" "}
+                  {nightVoteStatus.voted === 1 ? "has" : "have"} chosen
+                </p>
+              )}
+            </>
+          )}
+
+          {myRole === "doctor" && selectedId && (
+            <p className="text-emerald-700 text-xs md:text-sm">Protection chosen — you can change it before time runs out.</p>
+          )}
+        </div>
+
       </div>
     );
   }
 
-  // Waiting screen — shown to all non-active roles (and eliminated players)
+  // Waiting screen
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-6"
       style={{ background: "#060710" }}
     >
       <div className="flex flex-col items-center gap-8 text-center">
-        {/* Pulsing moon */}
         <div className="relative">
           <div
             className="absolute inset-0 rounded-full animate-ping opacity-10"
             style={{ background: "#c8a04a", transform: "scale(1.6)" }}
           />
-          <span className="text-5xl relative">🌙</span>
+          <span className="text-5xl md:text-7xl relative">🌙</span>
         </div>
 
         <div className="flex flex-col gap-2">
-          <p className="text-gray-400 text-lg font-medium tracking-wide">
+          <p className="text-gray-400 text-lg md:text-2xl font-medium tracking-wide">
             The town is asleep…
           </p>
-          <p className="text-gray-700 text-sm">
+          <p className="text-gray-700 text-sm md:text-base">
             Stay quiet.
           </p>
         </div>
 
-        {/* Subtle dots */}
         <div className="flex gap-2 mt-2">
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="w-1.5 h-1.5 rounded-full bg-gray-700 animate-pulse"
+              className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-gray-700 animate-pulse"
               style={{ animationDelay: `${i * 0.4}s` }}
             />
           ))}

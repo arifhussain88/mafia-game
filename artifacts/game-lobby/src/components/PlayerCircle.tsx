@@ -18,6 +18,8 @@ type Props = {
   onSelect: (playerId: string) => void;
   /** When provided, all cards flip simultaneously (game-over reveal mode). */
   revealAll?: boolean;
+  /** Circle container diameter in px. Defaults to 300 (mobile). Pass larger values for desktop. */
+  circleSize?: number;
 };
 
 function getCardMetrics(N: number): { w: number; radiusPct: number } {
@@ -45,6 +47,8 @@ const SELECT_BORDER: Record<ActionMode, string> = {
 const FELLOW_SHADOW = "0 0 10px rgba(239,68,68,0.3)";
 const FELLOW_BORDER = "#991b1b";
 
+const BASE_SIZE = 300;
+
 export default function PlayerCircle({
   players,
   mySocketId,
@@ -54,12 +58,20 @@ export default function PlayerCircle({
   actionMode,
   onSelect,
   revealAll,
+  circleSize = BASE_SIZE,
 }: Props) {
   const N = players.length;
   if (N === 0) return null;
 
-  const { w: cardW, radiusPct } = getCardMetrics(N);
+  const scale = circleSize / BASE_SIZE;
+  const { w: baseCardW, radiusPct } = getCardMetrics(N);
+  const cardW = Math.round(baseCardW * scale);
   const cardH = Math.round(cardW * (168 / 120));
+  const nameFontSize = Math.max(7, Math.round(8 * scale));
+  const offlineFontSize = Math.max(6, Math.round(7 * scale));
+  const badgeSize = Math.round(16 * scale);
+  const badgeFontSize = Math.round(9 * scale);
+  const badgeOffset = Math.round(6 * scale);
   const isGameOver = revealAll !== undefined;
 
   const myIndex = players.findIndex((p) => p.id === mySocketId);
@@ -74,8 +86,8 @@ export default function PlayerCircle({
 
   return (
     <div
-      className="relative w-full mx-auto select-none"
-      style={{ maxWidth: 300, aspectRatio: "1/1" }}
+      className="relative select-none"
+      style={{ width: circleSize, height: circleSize, flexShrink: 0 }}
       aria-label="Players around the table"
     >
       {players.map((player, index) => {
@@ -122,7 +134,7 @@ export default function PlayerCircle({
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: 3,
+              gap: Math.round(3 * scale),
             }}
           >
             {/* Card with overlays */}
@@ -185,7 +197,7 @@ export default function PlayerCircle({
                     pointerEvents: "none",
                   }}
                 >
-                  <span style={{ color: "#4b5563", fontSize: 16, lineHeight: 1 }}>✕</span>
+                  <span style={{ color: "#4b5563", fontSize: Math.round(16 * scale), lineHeight: 1 }}>✕</span>
                 </div>
               )}
 
@@ -207,16 +219,16 @@ export default function PlayerCircle({
                 <div
                   style={{
                     position: "absolute",
-                    top: -6,
-                    right: -6,
+                    top: -badgeOffset,
+                    right: -badgeOffset,
                     background: "#7f1d1d",
                     borderRadius: "50%",
-                    width: 16,
-                    height: 16,
+                    width: badgeSize,
+                    height: badgeSize,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: 9,
+                    fontSize: badgeFontSize,
                     pointerEvents: "none",
                   }}
                 >
@@ -228,7 +240,7 @@ export default function PlayerCircle({
             {/* Name label below card */}
             <p
               style={{
-                fontSize: 8,
+                fontSize: nameFontSize,
                 fontWeight: 600,
                 color: isMe ? "#f3f4f6" : eliminated && !isGameOver ? "#4b5563" : "#9ca3af",
                 maxWidth: cardW,
@@ -244,7 +256,7 @@ export default function PlayerCircle({
 
             {/* Offline indicator */}
             {!player.connected && !eliminated && (
-              <p style={{ fontSize: 7, color: "#6b7280", lineHeight: 1, marginTop: -2 }}>offline</p>
+              <p style={{ fontSize: offlineFontSize, color: "#6b7280", lineHeight: 1, marginTop: -2 }}>offline</p>
             )}
           </div>
         );
