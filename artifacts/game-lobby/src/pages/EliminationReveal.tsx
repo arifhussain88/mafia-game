@@ -1,16 +1,13 @@
 type Props = {
-  phase: "night-result" | "day-result";
   eliminatedName: string | null;
   skipped?: boolean;
 };
 
-export default function EliminationReveal({ phase, eliminatedName, skipped }: Props) {
-  const isNight = phase === "night-result";
-
+export default function EliminationReveal({ eliminatedName, skipped }: Props) {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
-      style={{ background: isNight ? "#060710" : "#120e08" }}
+      style={{ background: "#120e08" }}
     >
       <div className="w-full max-w-sm text-center">
 
@@ -25,7 +22,7 @@ export default function EliminationReveal({ phase, eliminatedName, skipped }: Pr
         ) : eliminatedName ? (
           <>
             <p className="text-xs text-gray-600 uppercase tracking-widest font-medium mb-8">
-              {isNight ? "The town wakes to find…" : "The town has spoken…"}
+              The town has spoken…
             </p>
 
             <div className="rounded-2xl border border-gray-800 bg-gray-900 px-6 py-7 mb-6 shadow-[0_0_32px_rgba(0,0,0,0.5)]">
@@ -33,19 +30,17 @@ export default function EliminationReveal({ phase, eliminatedName, skipped }: Pr
                 {eliminatedName.charAt(0).toUpperCase()}
               </div>
               <p className="text-white text-2xl font-bold mb-3">{eliminatedName}</p>
-              <p className="text-gray-500 text-sm">
-                {isNight ? "was found dead this morning." : "was voted out by the town."}
-              </p>
+              <p className="text-gray-500 text-sm">was voted out by the town.</p>
             </div>
 
             <p className="text-gray-600 text-xs leading-relaxed">
-              {isNight ? "The game continues at dawn." : "The game continues through the night."}
+              The game continues through the night.
             </p>
           </>
         ) : (
           <>
-            <div className="text-5xl mb-6 opacity-40">🌙</div>
-            <p className="text-gray-500">The night passes quietly…</p>
+            <div className="text-5xl mb-6 opacity-40">🗳️</div>
+            <p className="text-gray-500">The vote concluded with no result.</p>
           </>
         )}
 

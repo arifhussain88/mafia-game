@@ -1,0 +1,30 @@
+Good reorder — Mafia first actually makes more narrative sense too (the attack happens, then the Doctor either saves or doesn't, then the Detective investigates the aftermath). A few design notes:
+
+- **Doctor's knowledge** — confirmed, Doctor only learns if their save worked through the public night summary, same as everyone else. No private feedback.
+- **Detective's knowledge** — private and immediate on selection, every round. They build intel over multiple nights.
+- **Night summary typing animation** — each line types out one character at a time with a slight pause between lines, building suspense. The sequence: Mafia line first → pause → Doctor outcome line → pause → Detective line (but the Detective line in the public summary never says *who* the Detective investigated or what they found — it just says something like "The Detective was watching from the shadows" as flavour, keeping their intel private). If you want the Detective's public summary line omitted entirely to keep them more hidden, say so.
+- **Summary only shows relevant lines** — e.g. if no one was killed (Doctor saved), the Mafia line says "[Name] was targeted in the night" and the Doctor line says "...but survived until morning." If Doctor failed, the Mafia line says "[Name] was found dead" and no Doctor line appears (so it doesn't reveal a Doctor exists by their absence — worth thinking about).
+
+---
+
+**Prompt 9 — reordered night timers, Doctor feedback rules, and animated night summary:**
+
+> Restructure the Night phase into three sequential private action windows in this order: Mafia first, then Doctor, then Detective.
+>
+> Step 1 — Mafia's turn: Show the Mafia a private targeting screen with a 30-second timer and a list of all living players excluding themselves. They select one to eliminate. All other players see a generic "The town is asleep… stay quiet" waiting screen with no timer visible. If the Mafia does not select before the timer expires, no attack happens this night.
+>
+> Step 2 — Doctor's turn: Immediately after the Mafia's timer ends, show the Doctor a private targeting screen with a fresh 30-second timer and a list of all living players including themselves. They select one to protect. All other players remain on the generic waiting screen. The Doctor receives no private confirmation of whether their save worked — they only learn the outcome through the public night summary shown to everyone.
+>
+> Step 3 — Detective's turn: Immediately after the Doctor's timer ends, show the Detective a private targeting screen with a fresh 30-second timer and a list of all living players excluding themselves. They select one to investigate. On selection, immediately show the Detective a private inline message — "[Name] is Mafia" or "[Name] is not Mafia" — visible only to them within the same screen. This result is never shared publicly. All other players remain on the generic waiting screen.
+>
+> Night resolution after all three timers complete: if the Doctor's protection choice matches the Mafia's target, the target survives; otherwise the target is eliminated.
+>
+> At the transition from Night to Day, before the discussion timer starts, display a full-screen night summary screen to all players. Reveal the following lines sequentially using a typewriter animation — each character types out one at a time, with a natural pause between each line completing and the next one starting, to build suspense:
+>
+> Line 1 (always shown): If someone was killed — "The town woke to find [Name] dead in the streets." If the Doctor saved the target — "The town stirred… someone was attacked in the night."
+>
+> Line 2 (always shown after Line 1): If the Doctor saved the target — "But somehow, they survived the night." If no one was saved and someone died — omit this line entirely to avoid implying a Doctor exists.
+>
+> Line 3 (always shown last, as flavour only): "The Detective watches silently, taking notes." — never mention who was investigated or what was found.
+>
+> After all lines have typed out, show a "Begin Day" button that the host must press to proceed, giving players time to absorb the summary. Keep all existing noir styling — dark background, amber text for the typing animation.
