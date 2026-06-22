@@ -4,10 +4,16 @@ import { logger } from "./lib/logger";
 const TIMERS = {
   ROLE_REVEAL: 6000,
   NIGHT_STEP: 30000,
+  NIGHT_EARLY_ADVANCE: 2000,
   DAY_DISCUSSION: 60000,
   DAY_VOTE: 30000,
   DAY_RESULT: 5000,
 };
+
+// Must match NightSummary.tsx animation constants
+const TYPEWRITER_CHAR_DELAY = 38;
+const TYPEWRITER_LINE_PAUSE = 900;
+const NIGHT_SUMMARY_EXTRA_PAUSE = 3000;
 
 const MIN_PLAYERS = 5;
 
@@ -139,6 +145,14 @@ function buildNightSummaryLines(
   }
   lines.push("The Detective watches silently, taking notes.");
   return lines;
+}
+
+/** Compute how long the frontend typewriter will take to render all lines. */
+function computeTypewriterDuration(lines: string[]): number {
+  return lines.reduce(
+    (total, line) => total + line.length * TYPEWRITER_CHAR_DELAY + TYPEWRITER_LINE_PAUSE,
+    0,
+  );
 }
 
 function broadcastNightVoteStatus(io: Server, code: string) {
@@ -296,13 +310,26 @@ function resolveNight(io: Server, code: string) {
 
   const lines = buildNightSummaryLines(mafiaTargetId, eliminatedName, wasProtected);
 
+  // Auto-advance to day after typewriter finishes + 3s pause
+  const typewriterMs = computeTypewriterDuration(lines);
+  const summaryDelay = typewriterMs + NIGHT_SUMMARY_EXTRA_PAUSE;
+  room.timerEndsAt = Date.now() + summaryDelay;
+
   io.to(code).emit("night-summary", {
     lines,
     eliminatedId,
     players: serializePlayers(room.players),
   });
 
-  logger.info({ code, eliminatedName, wasProtected }, "Night resolved");
+  room.timer = setTimeout(() => {
+    const roomNow = rooms.get(code);
+    if (!roomNow || roomNow.phase !== "night-summary") return;
+    const winner = checkWin(roomNow);
+    if (winner) endGame(io, code, winner);
+    else startDayDiscussion(io, code);
+  }, summaryDelay);
+
+  logger.info({ code, eliminatedName, wasProtected, summaryDelay }, "Night resolved — day begins automatically");
 }
 
 function startDayDiscussion(io: Server, code: string) {
@@ -433,7 +460,10 @@ function handleMidGameDisconnect(socketId: string, room: Room, io: Server, code:
     broadcastNightVoteStatus(io, code);
     const mafiaAlive = connectedLivingMafia(room);
     const allVoted = mafiaAlive.length > 0 && mafiaAlive.every((m) => room.nightVotes.has(m.id));
-    if (allVoted) startNightDoctor(io, code);
+    if (allVoted) {
+      clearRoomTimer(room);
+      room.timer = setTimeout(() => startNightDoctor(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
+    }
   }
 
   const winner = checkWin(room);
@@ -609,16 +639,19 @@ export function registerSocketHandlers(io: Server) {
         room.nightVotes.set(socket.id, data.targetId);
         broadcastNightVoteStatus(io, code);
 
-        // Advance early when all connected mafia have voted
+        // Advance early when all connected mafia have voted — 2s pause before next step
         const connectedMafia = connectedLivingMafia(room);
         const allVoted = connectedMafia.length > 0 && connectedMafia.every((m) => room.nightVotes.has(m.id));
-        if (allVoted) startNightDoctor(io, code);
+        if (allVoted) {
+          clearRoomTimer(room);
+          room.timer = setTimeout(() => startNightDoctor(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
+        }
         return;
       }
     });
 
     socket.on("doctor-protect", (data: { targetId: string }) => {
-      for (const [, room] of rooms.entries()) {
+      for (const [code, room] of rooms.entries()) {
         const doctor = room.players.get(socket.id);
         if (!doctor) continue;
         if (room.phase !== "night-doctor" || !doctor.alive || doctor.role !== "doctor") return;
@@ -626,14 +659,21 @@ export function registerSocketHandlers(io: Server) {
         const target = room.players.get(data.targetId);
         if (!target || !target.alive) return;
 
+        // Only record first selection; but allow changing before early-advance fires
         room.doctorProtect.set(socket.id, data.targetId);
         socket.emit("doctor-protect-ack", { targetId: data.targetId });
+
+        // Advance immediately after first protect selection — 2s pause
+        if (room.doctorProtect.size === 1) {
+          clearRoomTimer(room);
+          room.timer = setTimeout(() => startNightDetective(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
+        }
         return;
       }
     });
 
     socket.on("detective-investigate", (data: { targetId: string }) => {
-      for (const [, room] of rooms.entries()) {
+      for (const [code, room] of rooms.entries()) {
         const detective = room.players.get(socket.id);
         if (!detective) continue;
         if (room.phase !== "night-detective" || !detective.alive || detective.role !== "detective") return;
@@ -641,7 +681,7 @@ export function registerSocketHandlers(io: Server) {
         const target = room.players.get(data.targetId);
         if (!target || !target.alive || target.id === socket.id) return;
 
-        // Only allow one investigation — if already investigated, ignore
+        // Only allow one investigation
         if (room.detectiveInvestigate.has(socket.id)) return;
 
         room.detectiveInvestigate.set(socket.id, data.targetId);
@@ -652,20 +692,11 @@ export function registerSocketHandlers(io: Server) {
           targetName: target.name,
           isMafia: target.role === "mafia",
         });
-        logger.info({ detectiveId: socket.id, targetName: target.name, isMafia: target.role === "mafia" }, "Detective result sent immediately");
-        return;
-      }
-    });
+        logger.info({ detectiveId: socket.id, targetName: target.name, isMafia: target.role === "mafia" }, "Detective result sent");
 
-    socket.on("begin-day", () => {
-      for (const [code, room] of rooms.entries()) {
-        const player = room.players.get(socket.id);
-        if (!player) continue;
-        if (room.phase !== "night-summary" || !player.isHost) return;
-
-        const winner = checkWin(room);
-        if (winner) endGame(io, code, winner);
-        else startDayDiscussion(io, code);
+        // Advance to night resolution after 2s (time for detective to read result)
+        clearRoomTimer(room);
+        room.timer = setTimeout(() => resolveNight(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
         return;
       }
     });
@@ -712,11 +743,11 @@ export function registerSocketHandlers(io: Server) {
             }
             io.to(code).emit("players-updated", { players: serializePlayers(room.players) });
           }
-        } else if (room.phase !== "game-over") {
+          logger.info({ socketId: socket.id }, "Socket disconnected (lobby)");
+        } else {
           handleMidGameDisconnect(socket.id, room, io, code);
+          logger.info({ socketId: socket.id }, "Socket disconnected (mid-game)");
         }
-
-        logger.info({ socketId: socket.id, code }, "Player disconnected");
         return;
       }
       logger.info({ socketId: socket.id }, "Socket disconnected (no room)");

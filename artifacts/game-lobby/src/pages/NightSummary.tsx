@@ -2,14 +2,12 @@ import { useEffect, useState } from "react";
 
 type Props = {
   lines: string[];
-  isHost: boolean;
-  onBeginDay: () => void;
 };
 
 const CHAR_DELAY_MS = 38;
 const LINE_PAUSE_MS = 900;
 
-export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
+export default function NightSummary({ lines }: Props) {
   const [completedLines, setCompletedLines] = useState<string[]>([]);
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
@@ -99,33 +97,42 @@ export default function NightSummary({ lines, isHost, onBeginDay }: Props) {
           )}
         </div>
 
-        {/* Begin Day / waiting */}
+        {/* After all lines finish: "Day begins soon…" */}
         {allDone && (
-          <div className="flex flex-col items-center gap-3 mt-2">
+          <div
+            className="flex flex-col items-center gap-4 mt-2"
+            style={{
+              animation: "fadeIn 0.6s ease forwards",
+            }}
+          >
             <div
               className="w-full h-px"
               style={{ background: "linear-gradient(to right, transparent, #c8a04a44, transparent)" }}
             />
-            {isHost ? (
-              <button
-                onClick={onBeginDay}
-                className="mt-4 w-full max-w-xs py-4 rounded-2xl font-bold text-base md:text-lg tracking-wide text-gray-900 transition-all active:scale-95"
-                style={{
-                  background: "linear-gradient(135deg, #c8a04a 0%, #e8c46a 50%, #c8a04a 100%)",
-                  boxShadow: "0 0 24px rgba(200,160,74,0.35)",
-                }}
-              >
-                ☀️ Begin Day
-              </button>
-            ) : (
-              <p className="text-gray-600 text-sm md:text-base mt-4 animate-pulse">
-                Waiting for the host to begin the day…
+            <div className="flex items-center gap-3 mt-2">
+              <span
+                className="w-1.5 h-1.5 rounded-full animate-pulse"
+                style={{ background: "#c8a04a" }}
+              />
+              <p className="text-amber-700/70 text-sm md:text-base font-medium tracking-wide">
+                Day begins soon…
               </p>
-            )}
+              <span
+                className="w-1.5 h-1.5 rounded-full animate-pulse"
+                style={{ background: "#c8a04a", animationDelay: "0.3s" }}
+              />
+            </div>
           </div>
         )}
 
       </div>
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

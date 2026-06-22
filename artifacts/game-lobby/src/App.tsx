@@ -306,8 +306,6 @@ export default function App() {
       {phase === "night-summary" && (
         <NightSummary
           lines={nightSummaryLines}
-          isHost={isHost}
-          onBeginDay={beginDay}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Player, Role } from "@/App";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useCircleSize } from "@/hooks/useCircleSize";
@@ -50,6 +50,12 @@ const INSTRUCTION: Record<NightStep, string> = {
   "night-detective": "Choose a player to investigate.",
 };
 
+const WAITING_MSG: Record<NightStep, string> = {
+  "night-mafia":     "The Mafia is making their move…",
+  "night-doctor":    "The Doctor is at work…",
+  "night-detective": "The Detective is investigating…",
+};
+
 export default function NightPhase({
   phase,
   players,
@@ -69,6 +75,14 @@ export default function NightPhase({
   const countdown = useCountdown(timerEndsAt);
   const alertFiredRef = useRef(false);
   const circleSize = useCircleSize();
+
+  // Fade-in state for the waiting screen message — resets on each phase change
+  const [msgVisible, setMsgVisible] = useState(false);
+  useEffect(() => {
+    setMsgVisible(false);
+    const t = setTimeout(() => setMsgVisible(true), 80);
+    return () => clearTimeout(t);
+  }, [phase]);
 
   const me = players.find((p) => p.id === mySocketId);
   const amAlive = me?.alive ?? false;
@@ -135,7 +149,7 @@ export default function NightPhase({
 
         {/* Instruction */}
         <p className="text-xs md:text-sm text-center text-gray-500 mb-3 md:mb-5 max-w-sm md:max-w-lg">
-          {detHasResult ? "Investigation complete." : INSTRUCTION[phase]}
+          {detHasResult ? "Advancing to the next phase in a moment…" : INSTRUCTION[phase]}
         </p>
 
         {/* Circle */}
@@ -169,14 +183,14 @@ export default function NightPhase({
                   ? `${detectiveResult.targetName} is Mafia.`
                   : `${detectiveResult.targetName} is not Mafia.`}
               </p>
-              <p className="text-xs text-gray-600 mt-1">This result is yours alone. Never share it publicly.</p>
+              <p className="text-xs text-gray-600 mt-1">Only you can see this. Day begins in a moment.</p>
             </div>
           )}
 
           {myRole === "mafia" && !detHasResult && (
             <>
               {selectedId ? (
-                <p className="text-red-700 text-xs md:text-sm">Target locked in — you can change it before time runs out.</p>
+                <p className="text-red-700 text-xs md:text-sm">Target locked in — advancing shortly.</p>
               ) : (
                 <p className="text-gray-700 text-xs md:text-sm">No target selected yet.</p>
               )}
@@ -190,7 +204,7 @@ export default function NightPhase({
           )}
 
           {myRole === "doctor" && selectedId && (
-            <p className="text-emerald-700 text-xs md:text-sm">Protection chosen — you can change it before time runs out.</p>
+            <p className="text-emerald-700 text-xs md:text-sm">Protection chosen — advancing shortly.</p>
           )}
         </div>
 
@@ -198,13 +212,14 @@ export default function NightPhase({
     );
   }
 
-  // Waiting screen
+  // Waiting screen — shows who is active this phase, with fade-in on phase change
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-6"
       style={{ background: "#060710" }}
     >
       <div className="flex flex-col items-center gap-8 text-center">
+        {/* Pulsing moon */}
         <div className="relative">
           <div
             className="absolute inset-0 rounded-full animate-ping opacity-10"
@@ -213,15 +228,23 @@ export default function NightPhase({
           <span className="text-5xl md:text-7xl relative">🌙</span>
         </div>
 
-        <div className="flex flex-col gap-2">
+        {/* Phase-specific message — fades in when phase changes */}
+        <div
+          style={{
+            transition: "opacity 0.5s ease",
+            opacity: msgVisible ? 1 : 0,
+          }}
+          className="flex flex-col gap-2"
+        >
           <p className="text-gray-400 text-lg md:text-2xl font-medium tracking-wide">
-            The town is asleep…
+            {WAITING_MSG[phase]}
           </p>
           <p className="text-gray-700 text-sm md:text-base">
             Stay quiet.
           </p>
         </div>
 
+        {/* Subtle dots */}
         <div className="flex gap-2 mt-2">
           {[0, 1, 2].map((i) => (
             <div
