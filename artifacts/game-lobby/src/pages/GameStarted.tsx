@@ -22,9 +22,6 @@ export default function GameStarted({ roomCode, players }: Props) {
                   {player.name.charAt(0).toUpperCase()}
                 </div>
                 <span className="text-white text-base font-medium">{player.name}</span>
-                {player.isHost && (
-                  <span className="text-xs text-amber-400 ml-auto">HOST</span>
-                )}
               </div>
             ))}
           </div>

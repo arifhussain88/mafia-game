@@ -61,11 +61,12 @@ function generateCode(): string {
   return code;
 }
 
-function serializePlayers(players: Map<string, Player>, revealRoles = false) {
+function serializePlayers(players: Map<string, Player>, revealRoles = false, viewerId?: string) {
   return Array.from(players.values()).map((p) => ({
     id: p.id,
     name: p.name,
-    isHost: p.isHost,
+    // Only the actual host sees who the host is; everyone else sees isHost: false for all players
+    isHost: viewerId ? p.id === viewerId && p.isHost : false,
     alive: p.alive,
     connected: p.connected,
     ...(revealRoles ? { role: p.role } : {}),
@@ -203,7 +204,10 @@ function startNightMafia(io: Server, code: string) {
   room.doctorProtect = new Map();
   room.detectiveInvestigate = new Map();
 
-  const endsAt = Date.now() + TIMERS.NIGHT_STEP;
+  const connectedMafia = connectedLivingMafia(room);
+  const duration = connectedMafia.length > 0 ? TIMERS.NIGHT_STEP : Math.floor(Math.random() * 3000) + 5000;
+
+  const endsAt = Date.now() + duration;
   room.timerEndsAt = endsAt;
 
   io.to(code).emit("game-phase", {
@@ -213,7 +217,7 @@ function startNightMafia(io: Server, code: string) {
   });
 
   broadcastNightVoteStatus(io, code);
-  room.timer = setTimeout(() => startNightDoctor(io, code), TIMERS.NIGHT_STEP);
+  room.timer = setTimeout(() => startNightDoctor(io, code), duration);
   logger.info({ code }, "Night: Mafia phase started");
 }
 
@@ -224,7 +228,10 @@ function startNightDoctor(io: Server, code: string) {
   clearRoomTimer(room);
   room.phase = "night-doctor";
 
-  const endsAt = Date.now() + TIMERS.NIGHT_STEP;
+  const doctor = Array.from(room.players.values()).find(p => p.role === "doctor" && p.alive && p.connected);
+  const duration = doctor ? TIMERS.NIGHT_STEP : Math.floor(Math.random() * 3000) + 5000;
+
+  const endsAt = Date.now() + duration;
   room.timerEndsAt = endsAt;
 
   io.to(code).emit("game-phase", {
@@ -233,7 +240,7 @@ function startNightDoctor(io: Server, code: string) {
     players: serializePlayers(room.players),
   });
 
-  room.timer = setTimeout(() => startNightDetective(io, code), TIMERS.NIGHT_STEP);
+  room.timer = setTimeout(() => startNightDetective(io, code), duration);
   logger.info({ code }, "Night: Doctor phase started");
 }
 
@@ -244,7 +251,10 @@ function startNightDetective(io: Server, code: string) {
   clearRoomTimer(room);
   room.phase = "night-detective";
 
-  const endsAt = Date.now() + TIMERS.NIGHT_STEP;
+  const detective = Array.from(room.players.values()).find(p => p.role === "detective" && p.alive && p.connected);
+  const duration = detective ? TIMERS.NIGHT_STEP : Math.floor(Math.random() * 3000) + 5000;
+
+  const endsAt = Date.now() + duration;
   room.timerEndsAt = endsAt;
 
   io.to(code).emit("game-phase", {
@@ -253,7 +263,7 @@ function startNightDetective(io: Server, code: string) {
     players: serializePlayers(room.players),
   });
 
-  room.timer = setTimeout(() => resolveNight(io, code), TIMERS.NIGHT_STEP);
+  room.timer = setTimeout(() => resolveNight(io, code), duration);
   logger.info({ code }, "Night: Detective phase started");
 }
 
@@ -459,7 +469,7 @@ function handleMidGameDisconnect(socketId: string, room: Room, io: Server, code:
   if (room.phase === "night-mafia") {
     broadcastNightVoteStatus(io, code);
     const mafiaAlive = connectedLivingMafia(room);
-    const allVoted = mafiaAlive.length > 0 && mafiaAlive.every((m) => room.nightVotes.has(m.id));
+    const allVoted = mafiaAlive.length === 0 || mafiaAlive.every((m) => room.nightVotes.has(m.id));
     if (allVoted) {
       clearRoomTimer(room);
       room.timer = setTimeout(() => startNightDoctor(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
@@ -504,7 +514,7 @@ export function registerSocketHandlers(io: Server) {
       rooms.set(code, room);
       socket.join(code);
 
-      socket.emit("room-created", { code, players: serializePlayers(room.players), isHost: true });
+      socket.emit("room-created", { code, players: serializePlayers(room.players, false, socket.id), isHost: true });
       logger.info({ code, name }, "Room created");
     });
 
@@ -540,7 +550,7 @@ export function registerSocketHandlers(io: Server) {
           code,
           phase: room.phase,
           endsAt: room.timerEndsAt,
-          players: serializePlayers(room.players),
+          players: serializePlayers(room.players, false, socket.id),
           isHost: disconnected.isHost,
         });
 
@@ -550,7 +560,10 @@ export function registerSocketHandlers(io: Server) {
           mafiaIds: disconnected.role === "mafia" ? mafiaIds : [],
         });
 
-        socket.to(code).emit("players-updated", { players: serializePlayers(room.players) });
+        // Send players-updated individually to each player with their own viewerId
+        for (const p of room.players.values()) {
+          io.to(p.id).emit("players-updated", { players: serializePlayers(room.players, false, p.id) });
+        }
         logger.info({ code, name }, "Player reconnected");
         return;
       }
@@ -564,8 +577,11 @@ export function registerSocketHandlers(io: Server) {
       room.players.set(socket.id, player);
       socket.join(code);
 
-      socket.emit("room-joined", { code, players: serializePlayers(room.players), isHost: false });
-      socket.to(code).emit("players-updated", { players: serializePlayers(room.players) });
+      socket.emit("room-joined", { code, players: serializePlayers(room.players, false, socket.id), isHost: false });
+      // Send players-updated individually to each player with their own viewerId
+      for (const p of room.players.values()) {
+        io.to(p.id).emit("players-updated", { players: serializePlayers(room.players, false, p.id) });
+      }
       logger.info({ code, name }, "Player joined room");
     });
 
@@ -580,7 +596,10 @@ export function registerSocketHandlers(io: Server) {
 
         room.players.delete(data.targetId);
         io.to(data.targetId).emit("kicked");
-        io.to(code).emit("players-updated", { players: serializePlayers(room.players) });
+        // Send players-updated individually to each player with their own viewerId
+        for (const p of room.players.values()) {
+          io.to(p.id).emit("players-updated", { players: serializePlayers(room.players, false, p.id) });
+        }
         logger.info({ code, kickedName: target.name }, "Player kicked");
         return;
       }
@@ -621,7 +640,10 @@ export function registerSocketHandlers(io: Server) {
           else { p.alive = true; p.role = null; }
         }
 
-        io.to(code).emit("room-reset", { players: serializePlayers(room.players) });
+        // Send room-reset individually to each player with their own viewerId
+        for (const p of room.players.values()) {
+          io.to(p.id).emit("room-reset", { players: serializePlayers(room.players, false, p.id) });
+        }
         logger.info({ code }, "Room reset for play again");
         return;
       }
@@ -641,7 +663,7 @@ export function registerSocketHandlers(io: Server) {
 
         // Advance early when all connected mafia have voted — 2s pause before next step
         const connectedMafia = connectedLivingMafia(room);
-        const allVoted = connectedMafia.length > 0 && connectedMafia.every((m) => room.nightVotes.has(m.id));
+        const allVoted = connectedMafia.length === 0 || connectedMafia.every((m) => room.nightVotes.has(m.id));
         if (allVoted) {
           clearRoomTimer(room);
           room.timer = setTimeout(() => startNightDoctor(io, code), TIMERS.NIGHT_EARLY_ADVANCE);

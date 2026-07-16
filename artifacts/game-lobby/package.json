@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.ts --host 0.0.0.0",
+    "dev": "node -e \"process.env.PORT=process.env.PORT || '5173'; process.env.BASE_PATH=process.env.BASE_PATH || '/'; require('child_process').execSync('vite --config vite.config.ts --host 0.0.0.0', { stdio: 'inherit' })\"",
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"

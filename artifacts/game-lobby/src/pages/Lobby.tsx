@@ -81,11 +81,6 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
                       {isMe && <span className="text-gray-600 text-sm ml-2 font-normal">(you)</span>}
                     </p>
                   </div>
-                  {player.isHost && (
-                    <span className="text-xs font-semibold text-amber-400 bg-amber-400/10 px-2 py-1 rounded-full border border-amber-400/20 flex-shrink-0">
-                      HOST
-                    </span>
-                  )}
                   {isHost && !isMe && (
                     <button
                       onClick={() => handleKick(player.id)}

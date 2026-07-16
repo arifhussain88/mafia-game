@@ -1,0 +1,339 @@
+# Antigravity Rules & Project Context
+
+## Current Technology Stack
+
+### Frontend
+- **Framework**: React 19
+- **Build Tool**: Vite 7
+- **Styling**: Tailwind CSS 4, Radix UI primitives, `lucide-react` for icons
+- **Animations**: Framer Motion
+- **State Management**: React Query (via Orval API client), Socket.IO client
+- **Audio**: Web Audio API (procedural sound effects)
+
+### Backend
+- **Runtime**: Node.js 24+
+- **Framework**: Express 5
+- **Real-time Communication**: Socket.IO
+- **Database / ORM**: PostgreSQL + Drizzle ORM (workspace prepared, currently in-memory rooms)
+- **Validation**: Zod
+- **Build Tool**: esbuild
+
+### Workspace & Tooling
+- **Package Manager**: pnpm (workspaces)
+- **Language**: TypeScript 5.9
+- **API Codegen**: Orval (OpenAPI)
+
+---
+
+## Detailed Dependency Inventory
+
+### Root Workspace (`package.json`)
+- `prettier` ^3.8.3
+- `typescript` ~5.9.3
+
+### Frontend (`artifacts/game-lobby/package.json`)
+**Dependencies:**
+- `socket.io-client` ^4.8.3
+
+**DevDependencies (UI/Component Library):**
+- `@hookform/resolvers` ^3.10.0
+- `@radix-ui/react-accordion` ^1.2.4
+- `@radix-ui/react-alert-dialog` ^1.1.7
+- `@radix-ui/react-aspect-ratio` ^1.1.3
+- `@radix-ui/react-avatar` ^1.1.4
+- `@radix-ui/react-checkbox` ^1.1.5
+- `@radix-ui/react-collapsible` ^1.1.4
+- `@radix-ui/react-context-menu` ^2.2.7
+- `@radix-ui/react-dialog` ^1.1.7
+- `@radix-ui/react-dropdown-menu` ^2.1.7
+- `@radix-ui/react-hover-card` ^1.1.7
+- `@radix-ui/react-label` ^2.1.3
+- `@radix-ui/react-menubar` ^1.1.7
+- `@radix-ui/react-navigation-menu` ^1.2.6
+- `@radix-ui/react-popover` ^1.1.7
+- `@radix-ui/react-progress` ^1.1.3
+- `@radix-ui/react-radio-group` ^1.2.4
+- `@radix-ui/react-scroll-area` ^1.2.4
+- `@radix-ui/react-select` ^2.1.7
+- `@radix-ui/react-separator` ^1.1.3
+- `@radix-ui/react-slider` ^1.2.4
+- `@radix-ui/react-slot` ^1.2.0
+- `@radix-ui/react-switch` ^1.1.4
+- `@radix-ui/react-tabs` ^1.1.4
+- `@radix-ui/react-toast` ^1.2.7
+- `@radix-ui/react-toggle` ^1.1.3
+- `@radix-ui/react-toggle-group` ^1.1.3
+- `@radix-ui/react-tooltip` ^1.2.0
+- `@replit/vite-plugin-cartographer` ^0.5.21
+- `@replit/vite-plugin-dev-banner` ^0.1.1
+- `@replit/vite-plugin-runtime-error-modal` ^0.0.6
+- `@tailwindcss/typography` ^0.5.15
+- `@tailwindcss/vite` ^4.1.14
+- `@tanstack/react-query` ^5.90.21
+- `@types/node` ^25.3.3
+- `@types/react` ^19.2.0
+- `@types/react-dom` ^19.2.0
+- `@vitejs/plugin-react` ^5.0.4
+- `class-variance-authority` ^0.7.1
+- `clsx` ^2.1.1
+- `cmdk` ^1.1.1
+- `date-fns` ^3.6.0
+- `embla-carousel-react` ^8.6.0
+- `framer-motion` ^12.23.24
+- `input-otp` ^1.4.2
+- `lucide-react` ^0.545.0
+- `next-themes` ^0.4.6
+- `react` 19.1.0
+- `react-day-picker` ^9.11.1
+- `react-dom` 19.1.0
+- `react-hook-form` ^7.55.0
+- `react-icons` ^5.4.0
+- `react-resizable-panels` ^2.1.7
+- `recharts` ^2.15.2
+- `sonner` ^2.0.7
+- `tailwind-merge` ^3.3.1
+- `tailwindcss` ^4.1.14
+- `tw-animate-css` ^1.4.0
+- `vaul` ^1.1.2
+- `vite` ^7.3.2
+- `wouter` ^3.3.5
+- `zod` ^3.25.76
+
+### Backend (`artifacts/api-server/package.json`)
+**Dependencies:**
+- `@workspace/api-zod` workspace:*
+- `@workspace/db` workspace:*
+- `cookie-parser` ^1.4.7
+- `cors` ^2.8.6
+- `drizzle-orm` catalog:
+- `express` ^5.2.1
+- `pino` ^9.14.0
+- `pino-http` ^10.5.0
+- `socket.io` ^4.8.3
+
+**DevDependencies:**
+- `@types/cookie-parser` ^1.4.10
+- `@types/cors` ^2.8.19
+- `@types/express` ^5.0.6
+- `@types/node` catalog:
+- `esbuild` 0.27.3
+- `esbuild-plugin-pino` ^2.3.3
+- `pino-pretty` ^13.1.3
+- `thread-stream` 3.1.0
+
+---
+
+## Project Architecture
+
+### Monorepo Structure
+```
+Mafia-Wars/
+├── package.json                 # Root workspace
+├── pnpm-workspace.yaml          # Packages + catalog + security (minimumReleaseAge: 1440)
+├── tsconfig.json / base.json    # TypeScript project references
+├── artifacts/
+│   ├── api-server/              # Express + Socket.io backend
+│   │   ├── src/
+│   │   │   ├── index.ts         # Entry point
+│   │   │   ├── app.ts           # Express setup
+│   │   │   ├── socket-handlers.ts  # ALL game logic
+│   │   │   ├── lib/logger.ts    # Pino logger
+│   │   │   └── routes/          # REST endpoints
+│   │   └── build.mjs            # esbuild bundle
+│   ├── game-lobby/              # React + Vite frontend
+│   │   ├── src/
+│   │   │   ├── App.tsx          # Main state + socket listeners
+│   │   │   ├── main.tsx         # React entry
+│   │   │   ├── components/      # UI (PlayerCircle, RoleCard, MuteToggle)
+│   │   │   ├── pages/           # Phase pages (Lobby, DayPhase, NightPhase, GameOver, etc.)
+│   │   │   ├── hooks/           # useCountdown, useCircleSize, useToast
+│   │   │   └── lib/             # audio, utils (cn helper)
+│   │   └── vite.config.ts       # Proxy to API server
+│   └── mockup-sandbox/          # Design system preview
+└── lib/                         # Shared workspace packages
+    ├── db/                      # Drizzle schema
+    ├── api-zod/                 # Shared Zod schemas
+    └── integrations/            # Integration templates
+```
+
+### Socket.io Event Flow
+```
+Client → Server (socket-handlers.ts)
+create-room → room-created (code, players, isHost)
+join-room → room-joined / room-error
+start-game (host) → role-assigned (private) + game-phase (broadcast)
+kick-player (host) → players-updated
+play-again (host) → room-reset
+night-vote (mafia) → night-vote-status
+doctor-protect → doctor-protect-ack
+detective-investigate → detective-result (private) + detective-investigate-ack
+day-vote → day-vote-update
+disconnect → players-updated / cleanup
+```
+
+### Game Phases (Sequential)
+1. **lobby** — Host sees kick/start; players see "waiting for host"
+2. **role-reveal** — Animated card flip
+3. **night-mafia** — Mafia kill vote (30s)
+4. **night-doctor** — Doctor protect (30s)
+5. **night-detective** — Detective investigate (30s)
+6. **night-summary** — Typewriter animation
+7. **day-discussion** — 60s with narration
+8. **day-vote** — 30s voting
+9. **day-result** — Elimination reveal (5s)
+10. **game-over** — Winner + role breakdown + host "Play Again"
+
+### Win Conditions
+- Mafia wins: `mafiaAlive >= townAlive`
+- Civilians win: `mafiaAlive === 0`
+
+---
+
+## Security Best Practices (Real-time Multiplayer / Socket.IO)
+
+### Current Posture
+| Layer | Status | Notes |
+|-------|--------|-------|
+| **Supply Chain** | ✅ Hardened | `minimumReleaseAge: 1440` in pnpm-workspace.yaml |
+| **Input Validation** | ⚠️ Partial | Phase/alive/role checks but **no Zod schemas** on socket events |
+| **Rate Limiting** | ❌ Missing | No per-socket/per-IP limits |
+| **Auth/Identity** | ❌ Anonymous | Socket.id only; no signed tokens |
+| **Information Hiding** | ⚠️ **LEAK** | `serializePlayers()` sends `isHost` to ALL clients |
+| **Room Isolation** | ✅ Enforced | Socket.join(code) |
+| **Privilege Checks** | ✅ Server-side | Validated on server |
+| **DoS Protection** | ❌ Missing | No max rooms/IP, max players/room |
+
+### Critical Vulnerability: Host Identity Leak
+**File**: `artifacts/api-server/src/socket-handlers.ts:64-73`
+```typescript
+function serializePlayers(players: Map<string, Player>, revealRoles = false) {
+  return Array.from(players.values()).map((p) => ({
+    id: p.id,
+    name: p.name,
+    isHost: p.isHost,        // ❌ SENT TO EVERYONE
+    alive: p.alive,
+    connected: p.connected,
+    ...(revealRoles ? { role: p.role } : {}),
+  }));
+}
+```
+**Impact**: Every player receives full player list with `isHost: true/false`
+
+### Recommended Enhancements (Priority Order)
+1. **Fix host leak** — Per-recipient serialization (current task)
+2. **Add Zod schemas** — Validate all socket event payloads
+3. **Rate limiting** — Max events/sec per socket
+4. **Signed room tokens** — JWT for reconnection
+5. **Connection limits** — Max 50 players/room, max 10 rooms/IP
+6. **Audit logging** — Privileged actions (kick, start-game)
+7. **Content Security Policy** — Helmet.js for HTTP routes
+
+---
+
+## Forward-Looking Notes & Recommendations
+
+### Animation Libraries
+- **Framer Motion** (12.23.24) — Already in use, fits React/Tailwind for complex/layout animations
+- **Tailwind-animate** (`tw-animate-css` 1.4.0) — For simple CSS micro-interactions
+- **CSS Animations** — Native, zero deps (typewriter, pulse, fade-in)
+- **Future considerations**:
+  - **Motion One** (`@motionone/react`) — WAAPI-based, lighter than Framer
+  - **React Spring** — Spring physics, drag gestures (PlayerCircle reorder)
+  - **Anime.js** — Timeline sequences (phase transitions)
+  - **Lottie React** — Designer animations (requires .json files)
+- **Guideline**: Prefer Framer Motion for React-integrated; tw-animate-css for Tailwind-native; CSS for loops/simple transitions
+
+### Mobile App Packaging (Android APK / iOS via Capacitor)
+- **Capacitor** highly recommended — seamless Vite/React integration
+- **Feasibility**:
+  - React 19 + Vite ✅
+  - Socket.io-client ✅ (works in Capacitor WebView)
+  - Web Audio API ✅
+  - Express Backend ❌ (must run on external server)
+  - WebSocket (ws/wss) ✅ (requires `wss://` in production)
+
+**Setup Template**:
+```bash
+pnpm add -D @capacitor/core @capacitor/cli @capacitor/android @capacitor/ios
+npx cap init mafia-wars com.mafiawars.app --web-dir=artifacts/game-lobby/dist
+npx cap add android
+npx cap add ios
+```
+
+**capacitor.config.ts**:
+```typescript
+{
+  appId: 'com.mafiawars.app',
+  appName: 'Mafia Wars',
+  webDir: 'artifacts/game-lobby/dist',
+  server: { url: 'http://LAN_IP:5173', cleartext: true },
+  android: { allowMixedContent: true },
+  plugins: { CapacitorHttp: { enabled: true }, PushNotifications: {} }
+}
+```
+
+**Required Backend Changes for Mobile**:
+- CORS: Allow `capacitor://localhost`, `http://localhost`, production domain
+- WebSocket proxy (nginx): `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade;`
+- SSL: `wss://` required for production
+
+---
+
+## Code Conventions
+
+### TypeScript
+- Strict mode, ESM imports, interfaces over types, zod for runtime validation (planned)
+
+### React
+- Function components with explicit Props interfaces
+- `useCallback` for handlers passed to children
+- Custom hooks for reusable logic
+- Radix UI for accessible components
+- Inline styles for dynamic values
+
+### Styling
+- Tailwind v4 CSS-first (`@import "tailwindcss"`)
+- `clsx` + `tailwind-merge` via `cn()` utility
+- Dark theme default
+
+### Socket.io Handlers
+- Single `registerSocketHandlers(io)` export
+- Helper functions for phase transitions
+- Timer management with `clearRoomTimer`
+- `serializePlayers` for client-safe objects
+
+---
+
+## Build & Dev Commands
+
+| Command | Description |
+|---------|-------------|
+| `pnpm install` | Install all (enforces pnpm) |
+| `pnpm run build` | Typecheck + build all |
+| `pnpm run typecheck` | TypeScript check all |
+| `pnpm -F @workspace/api-server run dev` | Dev API (port 3001) |
+| `pnpm -F @workspace/game-lobby run dev` | Dev Vite (port 5173) |
+| `pnpm -F @workspace/game-lobby run build` | Production frontend |
+| `pnpm -F @workspace/api-server run start` | Production API |
+
+---
+
+## Current Task Context
+
+**Objective**: Remove host label/badge/indicator from ALL player views. Host controls (kick, start game, play again) remain functional but ONLY visible to host. No player can identify the host.
+
+**Files to Modify**:
+1. `artifacts/game-lobby/src/pages/Lobby.tsx` — Remove HOST badge
+2. `artifacts/game-lobby/src/pages/GameStarted.tsx` — Remove HOST badge
+3. `artifacts/game-lobby/src/pages/GameOver.tsx` — Verify no host leak
+4. **CRITICAL**: `artifacts/api-server/src/socket-handlers.ts` `serializePlayers()` — Filter `isHost` per-recipient (Optional, but UI removal is required)
+
+**Verification**: Browser test with 2 tabs (host + player) — confirm host badge invisible on player tab.
+
+---
+
+## Development Workflow & Rules
+
+- **DEV_GUIDE.md Rule**: After completing any task, update `DEV_GUIDE.md` in the project root only. Create it if it doesn't exist yet with a header containing the project name, tech stack summary, and a plain one-paragraph game description. Maintain two sections inside it: a Features checklist of all completed features with one-line descriptions per feature, and a Changes Log with a dated entry per task showing which files changed, what changed and why, and simple manual browser testing steps. Keep the whole file plain, jargon-free, and readable at a glance.
+- **Testing Rules**: Never create test cases, test files, test suites, testing infrastructure, or extra files of any kind unless explicitly asked.
+- **README Rule**: Never modify `README.md`.
