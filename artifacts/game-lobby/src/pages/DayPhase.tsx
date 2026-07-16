@@ -56,7 +56,7 @@ export default function DayPhase({
     countdown > 20 ? "text-gray-400" : countdown > 8 ? "text-amber-400" : "text-red-400";
 
   return (
-    <div className="min-h-screen flex flex-col items-center px-4 py-6 md:py-10" style={{ background: "#120e08" }}>
+    <div className="min-h-screen flex flex-col items-center px-4 py-6 md:py-10">
 
       {/* Header */}
       <div className="w-full max-w-sm md:max-w-2xl mb-3 md:mb-4">

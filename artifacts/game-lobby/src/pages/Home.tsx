@@ -40,7 +40,7 @@ export default function Home({ onCreateRoom, onJoinRoom }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12" style={{ background: "#0a0a0b" }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
         {view === "main" && (
           <>

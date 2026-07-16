@@ -53,7 +53,7 @@ export default function NightSummary({ lines }: Props) {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-6 py-12"
-      style={{ background: "#060710" }}
+
     >
       <div className="w-full max-w-md md:max-w-xl flex flex-col gap-8">
 

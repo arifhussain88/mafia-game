@@ -7,7 +7,7 @@ export default function EliminationReveal({ eliminatedName, skipped }: Props) {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
-      style={{ background: "#120e08" }}
+
     >
       <div className="w-full max-w-sm text-center">
 

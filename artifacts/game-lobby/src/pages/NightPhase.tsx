@@ -127,7 +127,7 @@ export default function NightPhase({
       countdown > 15 ? "text-gray-400" : countdown > 5 ? "text-amber-400" : "text-red-400";
 
     return (
-      <div className="min-h-screen flex flex-col items-center px-4 py-6 md:py-10" style={{ background: "#060710" }}>
+      <div className="min-h-screen flex flex-col items-center px-4 py-6 md:py-10">
 
         {/* Header */}
         <div className="w-full max-w-sm md:max-w-2xl mb-3 md:mb-4">
@@ -216,7 +216,7 @@ export default function NightPhase({
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ background: "#060710" }}
+
     >
       <div className="flex flex-col items-center gap-8 text-center">
         {/* Pulsing moon */}

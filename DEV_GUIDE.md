@@ -14,10 +14,24 @@ A real-time multiplayer social deduction game where players are assigned roles s
 - [x] Room creation and joining mechanics.
 - [x] Game phase progression (Lobby, Night Phase, Day Phase, Game Over).
 - [x] Host identity visually hidden from regular players.
+- [x] 3-layer atmospheric background texture and phase overlays.
 
 ---
 
 ## Changes Log
+
+### July 16, 2026: Atmospheric Background & Fog Layer
+- **Files Changed:**
+  - `artifacts/game-lobby/src/components/Atmosphere.tsx`
+  - `artifacts/game-lobby/src/index.css`
+  - `artifacts/game-lobby/src/App.tsx`
+  - `artifacts/game-lobby/src/pages/*.tsx` (Removed hardcoded solid backgrounds)
+- **What Changed & Why:** Implemented a global 3-layer atmospheric background using CSS and SVG filters. Layer 1 uses `feTurbulence` for a seamless aged stone texture; Layer 2 smoothly transitions background colors based on the game phase (Night vs. Day); Layer 3 features slow-drifting, low-opacity CSS fog wisps. This enhances the mood and aesthetic without relying on external image assets.
+- **Manual Browser Testing Steps:**
+  1. Open the game in the browser and navigate through the phases (create a room, start game).
+  2. Observe the dark textured stone background.
+  3. Verify the background color transitions between a warm amber-sepia during the day and a deep blue-purple during the night.
+  4. Verify the subtle drifting fog animations are visible and don't interfere with UI readability.
 
 ### July 16, 2026: Hide Host Identity & Add Dev Rules
 - **Files Changed:**

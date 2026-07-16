@@ -66,7 +66,7 @@ export default function RoleReveal({ role, mafiaNames, myName }: Props) {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
-      style={{ background: "#0a0a0b" }}
+
     >
       <p className="text-gray-600 text-xs md:text-sm mb-10 tracking-widest uppercase font-medium">
         Your Role

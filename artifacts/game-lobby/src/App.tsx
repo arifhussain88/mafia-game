@@ -11,6 +11,7 @@ import EliminationReveal from "@/pages/EliminationReveal";
 import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
 import MuteToggle from "@/components/MuteToggle";
+import Atmosphere from "@/components/Atmosphere";
 import { playNightSting, playDayChime } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
@@ -266,7 +267,8 @@ export default function App() {
   const showMuteToggle = phase !== "home" && phase !== "lobby";
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen text-gray-100 relative z-0">
+      <Atmosphere phase={phase} />
       {phase === "home" && <Home onCreateRoom={createRoom} onJoinRoom={joinRoom} />}
 
       {phase === "lobby" && (

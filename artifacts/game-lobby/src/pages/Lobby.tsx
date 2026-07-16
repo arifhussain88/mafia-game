@@ -37,7 +37,7 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
   const needed = Math.max(0, MIN_PLAYERS - players.length);
 
   return (
-    <div className="min-h-screen flex flex-col items-center px-4 py-10" style={{ background: "#0a0a0b" }}>
+    <div className="min-h-screen flex flex-col items-center px-4 py-10">
       <div className="w-full max-w-sm">
 
         <div className="text-center mb-8">

@@ -40,7 +40,7 @@ export default function GameOver({ winner, players, mySocketId, isHost, onPlayAg
   const byRole = (role: Role) => players.filter((p) => p.role === role);
 
   return (
-    <div className="min-h-screen flex flex-col items-center px-4 py-8" style={{ background: "#0a0a0b" }}>
+    <div className="min-h-screen flex flex-col items-center px-4 py-8">
 
       {/* Pre-reveal suspense label */}
       {!showResult && (
