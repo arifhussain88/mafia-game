@@ -39,7 +39,7 @@ Make sure these are installed on your machine:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-username>/Mafia-Wars.git
+git clone https://github.com/arifhussain88/Mafia-Wars.git
 cd Mafia-Wars
 ```
 
