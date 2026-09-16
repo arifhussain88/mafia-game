@@ -250,16 +250,7 @@ This instantly gives you a `https://xxxxx.trycloudflare.com` URL. Same proxy not
 
 ---
 
-### Option 5: Deploy to Replit (Cloud Hosting)
-
-This project was originally built on Replit and includes `.replit` configuration:
-
-1. Import this repo into a [Replit](https://replit.com/) project.
-2. Click **Run** — Replit handles ports and gives you a public URL automatically.
-3. Share the Replit URL with testers.
-
----
-
+## 📁 Project Structure
 ## 📁 Project Structure
 
 ```
