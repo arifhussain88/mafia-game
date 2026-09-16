@@ -8,12 +8,15 @@ export default function MuteToggle() {
     const next = !muted;
     setMuted(next);
     setMutedState(next);
+    try {
+      window.dispatchEvent(new CustomEvent("mafia-muted-changed", { detail: next }));
+    } catch {}
   }
 
   return (
     <button
       onClick={toggle}
-      className="fixed top-3 right-3 z-50 w-10 h-10 flex items-center justify-center rounded-full bg-gray-900/80 border border-gray-800 hover:border-gray-600 text-gray-500 hover:text-gray-300 transition-colors backdrop-blur-sm"
+      className="fixed top-3 right-3 z-50 w-10 h-10 flex items-center justify-center rounded-full bg-black/60 border border-gray-700 text-white hover:opacity-90 transition-all backdrop-blur-sm"
       title={muted ? "Unmute" : "Mute"}
       aria-label={muted ? "Unmute sounds" : "Mute sounds"}
     >

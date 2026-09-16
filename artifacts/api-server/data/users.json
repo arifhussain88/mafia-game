@@ -1,0 +1,66 @@
+{
+  "users": [
+    {
+      "id": "733d2baf-1103-4269-a023-1cde9ec95b11",
+      "name": "Nihil placeat ipsam",
+      "email": "tester@gmail.com",
+      "dob": "2001-08-22T00:00:00.000Z",
+      "passwordHash": "b2fe8b46929bfa4c65fee9d5d43a2423799b18e360782e9abc27bd420877243e",
+      "createdAt": "2026-09-16T05:07:36.154Z"
+    },
+    {
+      "id": "c6d41e76-f22a-4d2f-b929-6168e41d2fad",
+      "name": "john",
+      "email": "john@wayne.com",
+      "dob": "2001-08-21T00:00:00.000Z",
+      "passwordHash": "85777f270ad7cf2a790981bbae3c4e484a1dc55e24a77390d692fbf1cffa12fa",
+      "createdAt": "2026-09-16T05:30:46.688Z"
+    },
+    {
+      "id": "631757a3-2f2b-4a05-9765-543ddae9db54",
+      "name": "Bruce",
+      "email": "bruce@wayne.com",
+      "dob": "2001-08-21T00:00:00.000Z",
+      "passwordHash": "85777f270ad7cf2a790981bbae3c4e484a1dc55e24a77390d692fbf1cffa12fa",
+      "createdAt": "2026-09-16T05:31:25.204Z"
+    },
+    {
+      "id": "f5e3d015-488a-4a4a-93c1-796473821f80",
+      "name": "CatWomen",
+      "email": "cat@women.com",
+      "dob": "2001-08-21T00:00:00.000Z",
+      "passwordHash": "efd872cf072e359cbfa4d72f2dcfbe04a15f97a5c889ef0e20c109eaa8914bae",
+      "createdAt": "2026-09-16T05:32:13.499Z"
+    },
+    {
+      "id": "d66866f0-a76a-44a1-9d2b-178220cf079b",
+      "name": "Lisa",
+      "email": "lisa@wayne.com",
+      "dob": "2001-08-21T00:00:00.000Z",
+      "passwordHash": "451967558ad577dc13eb3c03d90982be9e1e2f56a393507c53a520663c863e7d",
+      "createdAt": "2026-09-16T05:36:19.009Z"
+    }
+  ],
+  "sessions": {
+    "ec1d94c3-47b5-484e-82d4-53a74d1dab77": {
+      "userId": "733d2baf-1103-4269-a023-1cde9ec95b11",
+      "createdAt": "2026-09-16T05:07:36.154Z"
+    },
+    "aed8282a-18f5-46d1-8d40-fd720e18cb19": {
+      "userId": "c6d41e76-f22a-4d2f-b929-6168e41d2fad",
+      "createdAt": "2026-09-16T05:30:46.688Z"
+    },
+    "838cb7a9-b2e5-464c-8483-8fdd0fb12f9c": {
+      "userId": "631757a3-2f2b-4a05-9765-543ddae9db54",
+      "createdAt": "2026-09-16T05:31:25.204Z"
+    },
+    "5718309c-1ce6-4412-8992-e095a94f7788": {
+      "userId": "f5e3d015-488a-4a4a-93c1-796473821f80",
+      "createdAt": "2026-09-16T05:32:13.499Z"
+    },
+    "f50f632a-9879-4a2d-994f-8f7a7b88817d": {
+      "userId": "d66866f0-a76a-44a1-9d2b-178220cf079b",
+      "createdAt": "2026-09-16T05:36:19.009Z"
+    }
+  }
+}

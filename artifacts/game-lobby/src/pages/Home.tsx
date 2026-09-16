@@ -24,6 +24,15 @@ export default function Home({ onCreateRoom, onJoinRoom }: Props) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const [authMode, setAuthMode] = useState<"idle" | "signup" | "login">("idle");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authDob, setAuthDob] = useState("");
+  const [authPass, setAuthPass] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [user, setUser] = useState<{ id: string; name: string } | null>(() => {
+    try { return JSON.parse(localStorage.getItem("mafia-user") || "null"); } catch { return null; }
+  });
 
   function handleCreate() {
     const trimmed = name.trim();
@@ -39,25 +48,145 @@ export default function Home({ onCreateRoom, onJoinRoom }: Props) {
     onJoinRoom(trimmedCode, trimmedName);
   }
 
+  async function handleSignup() {
+    setError("");
+    if (!authName.trim() || !authPass || !authEmail.trim() || !authDob.trim()) { setError("Enter name, email, dob and password"); return; }
+    if (!acceptTerms) { setError("You must accept the terms to sign up"); return; }
+    // basic email check
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(authEmail)) { setError("Enter a valid email"); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(authDob)) { setError("Enter DOB as YYYY-MM-DD"); return; }
+    if (authPass.length < 8) { setError("Password must be at least 8 characters"); return; }
+    try {
+      const res = await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: authName.trim(), email: authEmail.trim(), password: authPass, dob: authDob.trim() }) });
+      if (!res.ok) {
+        let errMsg = "Signup failed";
+        try {
+          const body = await res.json();
+          errMsg = body?.message || JSON.stringify(body) || errMsg;
+        } catch {
+          try { const text = await res.text(); if (text) errMsg = text; } catch {}
+        }
+        throw new Error(errMsg);
+      }
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text();
+        throw new Error(text || "Invalid server response");
+      }
+      localStorage.setItem("mafia-token", data.token);
+      localStorage.setItem("mafia-user", JSON.stringify(data.user));
+      setUser(data.user);
+      setAuthMode("idle");
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    }
+  }
+
+  async function handleLogin() {
+    setError("");
+    if (!authEmail.trim() || !authPass) { setError("Enter email and password"); return; }
+    try {
+      const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: authEmail.trim(), password: authPass }) });
+      if (!res.ok) {
+        let errMsg = "Login failed";
+        try {
+          const body = await res.json();
+          errMsg = body?.message || JSON.stringify(body) || errMsg;
+        } catch {
+          try { const text = await res.text(); if (text) errMsg = text; } catch {}
+        }
+        throw new Error(errMsg);
+      }
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text();
+        throw new Error(text || "Invalid server response");
+      }
+      localStorage.setItem("mafia-token", data.token);
+      localStorage.setItem("mafia-user", JSON.stringify(data.user));
+      setUser(data.user);
+      setAuthMode("idle");
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("mafia-token");
+    localStorage.removeItem("mafia-user");
+    setUser(null);
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
         {view === "main" && (
           <>
-            <div className="text-center mb-10">
-              <div className="text-5xl mb-4">🔪</div>
-              <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Mafia</h1>
-              <p className="text-gray-500 text-base">The town has a problem.</p>
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-4">🔪</div>
+              <h1 className="text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-rose-300 mb-2">Mafia Wars</h1>
+              <p className="text-red-200 text-sm italic mb-4">The Town has a problem</p>
+
+              {user ? (
+                <div className="text-sm text-gray-300">Signed in as <strong className="text-white">{user.name}</strong> <button className="ml-3 text-xs underline" onClick={handleLogout}>Log out</button></div>
+              ) : (
+                <div className="flex gap-2 justify-center mt-3">
+                  <button onClick={() => { setAuthMode("signup"); setError(""); }} className="px-3 py-2 bg-transparent border border-gray-700 rounded text-sm text-gray-200">Sign up</button>
+                  <button onClick={() => { setAuthMode("login"); setError(""); }} className="px-3 py-2 bg-transparent border border-gray-700 rounded text-sm text-gray-200">Log in</button>
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-3">
-              <button onClick={() => { setView("create"); setError(""); }} className={primaryBtn}>
-                Create Room
-              </button>
-              <button onClick={() => { setView("join"); setError(""); }} className={secondaryBtn}>
-                Join Room
-              </button>
+              {user ? (
+                <>
+                  <button onClick={() => { setView("create"); setError(""); }} className={primaryBtn}>
+                    Create Room
+                  </button>
+                  <button onClick={() => { setView("join"); setError(""); }} className={secondaryBtn}>
+                    Join Room
+                  </button>
+                </>
+              ) : (
+                <div className="text-sm text-gray-400 text-center">Please sign up or log in to create or join rooms.</div>
+              )}
             </div>
           </>
+        )}
+
+        {authMode === "signup" && !user && (
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold text-white mb-2">Sign up</h3>
+            <input className={inputCls + " mb-2"} placeholder="Display name" value={authName} onChange={(e) => setAuthName(e.target.value)} />
+            <input className={inputCls + " mb-2"} placeholder="Email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+            <input className={inputCls + " mb-2"} placeholder="Date of birth (YYYY-MM-DD)" value={authDob} onChange={(e) => setAuthDob(e.target.value)} />
+            <input className={inputCls + " mb-2"} placeholder="Password (min 8 chars)" type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} />
+            <label className="flex items-center gap-2 text-sm text-gray-300 mb-2">
+              <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
+              <span>I accept the <a href="/terms.html" target="_blank" rel="noreferrer" className="underline">Terms of Service</a></span>
+            </label>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            <div className="flex gap-2 mt-3">
+              <button className={primaryBtn} onClick={handleSignup}>Create account</button>
+              <button className={ghostBtn} onClick={() => setAuthMode("idle")}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {authMode === "login" && !user && (
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold text-white mb-2">Log in</h3>
+            <input className={inputCls + " mb-2"} placeholder="Email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+            <input className={inputCls + " mb-2"} placeholder="Password" type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} />
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            <div className="flex gap-2 mt-3">
+              <button className={primaryBtn} onClick={handleLogin}>Log in</button>
+              <button className={ghostBtn} onClick={() => setAuthMode("idle")}>Cancel</button>
+            </div>
+          </div>
         )}
 
         {view === "create" && (

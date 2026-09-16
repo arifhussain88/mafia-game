@@ -12,7 +12,7 @@ import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
 import MuteToggle from "@/components/MuteToggle";
 import Atmosphere from "@/components/Atmosphere";
-import { playNightSting, playDayChime } from "@/lib/audio";
+import { playNightSting, playDayChime, startAmbientLoop, stopAmbientLoop, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
 
@@ -87,6 +87,25 @@ export default function App() {
     prevPhaseRef.current = phase;
     if (phase === "night-mafia" && prev !== "home") playNightSting();
     if (phase === "day-discussion") playDayChime();
+  }, [phase]);
+
+  // Ambient loop: start/stop when entering non-home phases (include lobby) and when mute toggles
+  useEffect(() => {
+    const ambientActive = phase !== "home"; // play ambient in lobby and gameplay
+    if (ambientActive && !isMuted()) {
+      startAmbientLoop();
+    } else {
+      stopAmbientLoop();
+    }
+
+    function onMuteChange(e: Event) {
+      const detail = (e as CustomEvent<boolean>).detail;
+      const shouldStart = phase !== "home" && !detail;
+      if (shouldStart) startAmbientLoop(); else stopAmbientLoop();
+    }
+
+    window.addEventListener("mafia-muted-changed", onMuteChange as EventListener);
+    return () => window.removeEventListener("mafia-muted-changed", onMuteChange as EventListener);
   }, [phase]);
 
   function resetForLobby(newPlayers: Player[], socketId: string) {
@@ -264,7 +283,8 @@ export default function App() {
   const beginDay            = useCallback(() => { socketRef.current?.emit("begin-day"); }, []);
 
   const isNightPhase = phase === "night-mafia" || phase === "night-doctor" || phase === "night-detective";
-  const showMuteToggle = phase !== "home" && phase !== "lobby";
+  // show mute in lobby and gameplay
+  const showMuteToggle = phase !== "home";
 
   return (
     <div className="min-h-screen text-gray-100 relative z-0">

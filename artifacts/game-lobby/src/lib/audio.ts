@@ -126,3 +126,102 @@ export function playTimerAlert(): void {
     osc.stop(t + 0.2);
   });
 }
+
+let _ambientNodes: {
+  master?: GainNode;
+  oscA?: OscillatorNode;
+  oscB?: OscillatorNode;
+  lfo?: OscillatorNode;
+  filter?: BiquadFilterNode;
+  noiseSource?: AudioBufferSourceNode;
+} = {};
+
+export function startAmbientLoop(): void {
+  if (getMuted()) return;
+  const ctx = getCtx();
+  if (!ctx) return;
+  if (_ambientNodes.master) return; // already running
+
+  const now = ctx.currentTime;
+
+  const master = ctx.createGain();
+  master.gain.value = 0.0;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 800;
+
+  // Two detuned oscillators for a mellow pad
+  const oscA = ctx.createOscillator();
+  oscA.type = "sine";
+  oscA.frequency.value = 110; // A2
+
+  const oscB = ctx.createOscillator();
+  oscB.type = "sine";
+  oscB.frequency.value = 110 * 1.005; // slight detune
+
+  // Slow LFO to modulate filter for movement
+  const lfo = ctx.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.value = 0.08; // very slow
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 250;
+  lfo.connect(lfoGain);
+  lfoGain.connect(filter.frequency);
+
+  // Gentle noise layer
+  let noiseSource: AudioBufferSourceNode | undefined;
+  try {
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.12;
+    noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = buffer;
+    noiseSource.loop = true;
+  } catch {}
+
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.value = 0.02;
+
+  oscA.connect(filter);
+  oscB.connect(filter);
+  filter.connect(master);
+  master.connect(ctx.destination);
+
+  if (noiseSource) {
+    noiseSource.connect(noiseGain);
+    noiseGain.connect(master);
+    noiseSource.start(now);
+  }
+
+  // Fade in
+  master.gain.setValueAtTime(0, now);
+  master.gain.linearRampToValueAtTime(0.18, now + 3.0);
+
+  oscA.start(now);
+  oscB.start(now);
+  lfo.start(now);
+
+  _ambientNodes = { master, oscA, oscB, lfo, filter, noiseSource };
+}
+
+export function stopAmbientLoop(): void {
+  const ctx = _ctx;
+  if (!ctx || !_ambientNodes.master) return;
+  const now = ctx.currentTime;
+  const master = _ambientNodes.master;
+  master.gain.cancelScheduledValues(now);
+  master.gain.setValueAtTime(master.gain.value, now);
+  master.gain.linearRampToValueAtTime(0.0, now + 1.0);
+
+  // stop nodes after fade
+  setTimeout(() => {
+    try {
+      _ambientNodes.oscA?.stop();
+      _ambientNodes.oscB?.stop();
+      _ambientNodes.lfo?.stop();
+      _ambientNodes.noiseSource?.stop();
+    } catch {}
+    _ambientNodes = {};
+  }, 1100);
+}
