@@ -55,13 +55,13 @@ app.use((req: any, _res, next) => {
               return next();
             }
           } catch (e2) {
-            try { logger.warn({ rawBody: raw, err: String(e2?.message ?? e2) }, "Failed tolerant JSON repair"); } catch {}
+            try { logger.warn({ rawBody: raw, err: String(e2 instanceof Error ? e2.message : e2) }, "Failed tolerant JSON repair"); } catch {}
           }
         }
       }
     }
   } catch (e) {
-    try { logger.warn({ err: String(e?.message ?? e) }, "Error in JSON repair middleware"); } catch {}
+    try { logger.warn({ err: String(e instanceof Error ? e.message : e) }, "Error in JSON repair middleware"); } catch {}
   }
   return next();
 });
@@ -98,29 +98,7 @@ app.use((err: any, req: any, res: any, next: any) => {
   const isBodyParser = err && (err.type === "entity.parse.failed" || err instanceof SyntaxError || err.name === 'SyntaxError');
   if (isBodyParser) {
     try { logger.warn({ rawBody: req.rawBody, err: String(err?.message ?? err) }, "Invalid JSON payload received"); } catch {}
-    // try reparsing here (error handler path) and hand off to router when successful
-    if (req && req.rawBody) {
-      try {
-        // try strict parse first
-        req.body = JSON.parse(req.rawBody);
-        try { logger.info({}, "Reparsed rawBody in error handler"); } catch {}
-        return router(req, res, (nextErr: any) => next(nextErr));
-      } catch (_) {
-        try {
-          const raw = String(req.rawBody || "").trim();
-          if (raw.startsWith("{") && raw.endsWith("}")) {
-            let s = raw;
-            s = s.replace(/([,{]\s*)([A-Za-z0-9_@.\-]+)\s*:/g, '$1"$2":');
-            s = s.replace(/:\s*([A-Za-z0-9_@.\-]+)(?=[,}\s])/g, ':"$1"');
-            req.body = JSON.parse(s);
-            try { logger.info({ repaired: s }, "Repaired malformed JSON payload in error handler"); } catch {}
-            return router(req, res, (nextErr: any) => next(nextErr));
-          }
-        } catch (e2) {
-          try { logger.warn({ rawBody: req.rawBody, err: String(e2?.message ?? e2) }, "Failed tolerant repair in error handler"); } catch {}
-        }
-      }
-    }
+      try { logger.warn({ rawBody: req.rawBody }, "Request rejected before route handling"); } catch {}
     return res.status(400).json({ message: "Invalid JSON payload" });
   }
   return next(err);

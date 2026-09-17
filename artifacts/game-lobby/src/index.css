@@ -329,6 +329,12 @@
  */
 @layer utilities {
 
+  /* Keep supporting copy readable over the animated dark game background. */
+  .game-shell .text-gray-400 { color: #dbe4ee !important; }
+  .game-shell .text-gray-500 { color: #e2e8f0 !important; }
+  .game-shell .text-gray-600 { color: #f1f5f9 !important; }
+  .game-shell .text-gray-700 { color: #ffffff !important; }
+
   /* Hide ugly search cancel button in Chrome until we can style it properly */
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;

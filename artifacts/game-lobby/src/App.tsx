@@ -12,7 +12,7 @@ import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
 import MuteToggle from "@/components/MuteToggle";
 import Atmosphere from "@/components/Atmosphere";
-import { playNightSting, playDayChime, startAmbientLoop, stopAmbientLoop, isMuted } from "@/lib/audio";
+import { playNightSting, playDayChime, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
 
@@ -48,6 +48,9 @@ export default function App() {
   const [roomCode, setRoomCode] = useState("");
   const [isHost, setIsHost] = useState(false);
   const [phase, setPhase] = useState<GamePhase>("home");
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    try { return Boolean(localStorage.getItem("mafia-token")); } catch { return false; }
+  });
   const [players, setPlayers] = useState<Player[]>([]);
 
   const [myRole, setMyRole] = useState<Role | null>(null);
@@ -89,10 +92,11 @@ export default function App() {
     if (phase === "day-discussion") playDayChime();
   }, [phase]);
 
-  // Ambient loop: start/stop when entering non-home phases (include lobby) and when mute toggles
+  // Ambient loop plays only in the lobby and after the game ends.
   useEffect(() => {
-    const ambientActive = phase !== "home"; // play ambient in lobby and gameplay
+    const ambientActive = isAuthenticated && (phase === "home" || phase === "lobby" || phase === "game-over");
     if (ambientActive && !isMuted()) {
+      unlockAudio();
       startAmbientLoop();
     } else {
       stopAmbientLoop();
@@ -100,13 +104,34 @@ export default function App() {
 
     function onMuteChange(e: Event) {
       const detail = (e as CustomEvent<boolean>).detail;
-      const shouldStart = phase !== "home" && !detail;
-      if (shouldStart) startAmbientLoop(); else stopAmbientLoop();
+      const shouldStart = ambientActive && !detail;
+      if (shouldStart) {
+        unlockAudio();
+        startAmbientLoop();
+      } else stopAmbientLoop();
     }
 
     window.addEventListener("mafia-muted-changed", onMuteChange as EventListener);
     return () => window.removeEventListener("mafia-muted-changed", onMuteChange as EventListener);
   }, [phase]);
+
+  useEffect(() => {
+    const ambientActive = isAuthenticated && (phase === "home" || phase === "lobby" || phase === "game-over");
+
+    function unlockOnGesture() {
+      if (ambientActive) {
+        unlockAudio();
+        if (!isMuted()) startAmbientLoop();
+      }
+    }
+
+    window.addEventListener("pointerdown", unlockOnGesture, { once: true });
+    window.addEventListener("keydown", unlockOnGesture, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockOnGesture);
+      window.removeEventListener("keydown", unlockOnGesture);
+    };
+  }, [phase, isAuthenticated]);
 
   function resetForLobby(newPlayers: Player[], socketId: string) {
     setPlayers(newPlayers);
@@ -264,11 +289,13 @@ export default function App() {
   }, []);
 
   const createRoom = useCallback((name: string) => {
+    unlockAudio();
     setMyName(name);
     socketRef.current?.emit("create-room", { name });
   }, []);
 
   const joinRoom = useCallback((code: string, name: string) => {
+    unlockAudio();
     setMyName(name);
     socketRef.current?.emit("join-room", { code, name });
   }, []);
@@ -284,12 +311,22 @@ export default function App() {
 
   const isNightPhase = phase === "night-mafia" || phase === "night-doctor" || phase === "night-detective";
   // show mute in lobby and gameplay
-  const showMuteToggle = phase !== "home";
+  const showMuteToggle = phase !== "home" || isAuthenticated;
 
   return (
-    <div className="min-h-screen text-gray-100 relative z-0">
+    <div className="game-shell min-h-screen text-gray-100 relative z-0">
       <Atmosphere phase={phase} />
-      {phase === "home" && <Home onCreateRoom={createRoom} onJoinRoom={joinRoom} />}
+      {phase === "home" && (
+        <Home
+          onCreateRoom={createRoom}
+          onJoinRoom={joinRoom}
+          onAuthenticated={() => {
+            setIsAuthenticated(true);
+            unlockAudio();
+            if (!isMuted()) startAmbientLoop();
+          }}
+        />
+      )}
 
       {phase === "lobby" && (
         <Lobby

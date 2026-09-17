@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { isMuted, setMuted } from "@/lib/audio";
+import { isMuted, playAudioCheck, setMuted } from "@/lib/audio";
 
 export default function MuteToggle() {
   const [muted, setMutedState] = useState(isMuted);
@@ -8,6 +8,7 @@ export default function MuteToggle() {
     const next = !muted;
     setMuted(next);
     setMutedState(next);
+    if (!next) playAudioCheck();
     try {
       window.dispatchEvent(new CustomEvent("mafia-muted-changed", { detail: next }));
     } catch {}

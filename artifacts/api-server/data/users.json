@@ -39,6 +39,14 @@
       "dob": "2001-08-21T00:00:00.000Z",
       "passwordHash": "451967558ad577dc13eb3c03d90982be9e1e2f56a393507c53a520663c863e7d",
       "createdAt": "2026-09-16T05:36:19.009Z"
+    },
+    {
+      "id": "a1cd0b1f-5675-4a24-be4b-75e9c91952c7",
+      "name": "bryce",
+      "email": "bryce@email.com",
+      "dob": "2001-08-21T00:00:00.000Z",
+      "passwordHash": "85777f270ad7cf2a790981bbae3c4e484a1dc55e24a77390d692fbf1cffa12fa",
+      "createdAt": "2026-09-17T19:45:20.525Z"
     }
   ],
   "sessions": {
@@ -61,6 +69,22 @@
     "f50f632a-9879-4a2d-994f-8f7a7b88817d": {
       "userId": "d66866f0-a76a-44a1-9d2b-178220cf079b",
       "createdAt": "2026-09-16T05:36:19.009Z"
+    },
+    "bfb132eb-b2f3-42bb-adad-5d5578d965ef": {
+      "userId": "a1cd0b1f-5675-4a24-be4b-75e9c91952c7",
+      "createdAt": "2026-09-17T19:45:20.525Z"
+    },
+    "05079d62-fe1c-4aac-a7fc-86098546488d": {
+      "userId": "631757a3-2f2b-4a05-9765-543ddae9db54",
+      "createdAt": "2026-09-17T19:54:36.767Z"
+    },
+    "7b847769-8d15-4003-9302-e7d9e4bc0d49": {
+      "userId": "631757a3-2f2b-4a05-9765-543ddae9db54",
+      "createdAt": "2026-09-17T20:12:18.519Z"
+    },
+    "2dc9fe5b-3e54-4f36-932d-81229e7bee97": {
+      "userId": "631757a3-2f2b-4a05-9765-543ddae9db54",
+      "createdAt": "2026-09-17T20:14:09.419Z"
     }
   }
 }

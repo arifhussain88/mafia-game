@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { startAmbientLoop, stopAmbientLoop, unlockAudio } from "@/lib/audio";
 
 type Props = {
   onCreateRoom: (name: string) => void;
   onJoinRoom: (code: string, name: string) => void;
+  onAuthenticated: () => void;
 };
 
 type View = "main" | "create" | "join";
@@ -19,7 +21,7 @@ const ghostBtn =
 const secondaryBtn =
   "w-full min-h-[52px] rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-white text-lg font-semibold transition-colors";
 
-export default function Home({ onCreateRoom, onJoinRoom }: Props) {
+export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Props) {
   const [view, setView] = useState<View>("main");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -49,6 +51,7 @@ export default function Home({ onCreateRoom, onJoinRoom }: Props) {
   }
 
   async function handleSignup() {
+    unlockAudio();
     setError("");
     if (!authName.trim() || !authPass || !authEmail.trim() || !authDob.trim()) { setError("Enter name, email, dob and password"); return; }
     if (!acceptTerms) { setError("You must accept the terms to sign up"); return; }
@@ -56,6 +59,7 @@ export default function Home({ onCreateRoom, onJoinRoom }: Props) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(authEmail)) { setError("Enter a valid email"); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(authDob)) { setError("Enter DOB as YYYY-MM-DD"); return; }
     if (authPass.length < 8) { setError("Password must be at least 8 characters"); return; }
+    startAmbientLoop();
     try {
       const res = await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: authName.trim(), email: authEmail.trim(), password: authPass, dob: authDob.trim() }) });
       if (!res.ok) {
@@ -79,14 +83,18 @@ export default function Home({ onCreateRoom, onJoinRoom }: Props) {
       localStorage.setItem("mafia-user", JSON.stringify(data.user));
       setUser(data.user);
       setAuthMode("idle");
+      onAuthenticated();
     } catch (e: any) {
+      stopAmbientLoop();
       setError(e?.message || String(e));
     }
   }
 
   async function handleLogin() {
+    unlockAudio();
     setError("");
     if (!authEmail.trim() || !authPass) { setError("Enter email and password"); return; }
+    startAmbientLoop();
     try {
       const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: authEmail.trim(), password: authPass }) });
       if (!res.ok) {
@@ -110,7 +118,9 @@ export default function Home({ onCreateRoom, onJoinRoom }: Props) {
       localStorage.setItem("mafia-user", JSON.stringify(data.user));
       setUser(data.user);
       setAuthMode("idle");
+      onAuthenticated();
     } catch (e: any) {
+      stopAmbientLoop();
       setError(e?.message || String(e));
     }
   }

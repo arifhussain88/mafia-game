@@ -2,13 +2,27 @@ let _ctx: AudioContext | null = null;
 
 function getCtx(): AudioContext | null {
   try {
-    if (!_ctx) _ctx = new AudioContext();
-    if (_ctx.state === "suspended") void _ctx.resume();
+    if (!_ctx) {
+      const AudioContextClass = window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return null;
+      _ctx = new AudioContextClass();
+    }
     return _ctx;
   } catch {
     return null;
   }
 }
+
+export function unlockAudio(): void {
+  const ctx = getCtx();
+  if (ctx?.state === "suspended") void ctx.resume();
+}
+
+const lobbyMusic = new Audio(`${import.meta.env.BASE_URL}audio/dark.mp3`);
+lobbyMusic.loop = true;
+lobbyMusic.preload = "auto";
+lobbyMusic.volume = 0.42;
 
 function getMuted(): boolean {
   try { return localStorage.getItem("mafia-muted") === "true"; } catch { return false; }
@@ -18,6 +32,34 @@ export function isMuted(): boolean { return getMuted(); }
 
 export function setMuted(m: boolean): void {
   try { localStorage.setItem("mafia-muted", String(m)); } catch {}
+}
+
+export function playAudioCheck(): void {
+  const ctx = getCtx();
+  if (!ctx) return;
+
+  const play = () => {
+    const now = ctx.currentTime;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(660, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.45, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.55);
+  };
+
+  if (ctx.state === "running") {
+    play();
+  } else {
+    void ctx.resume().then(() => {
+      if (ctx.state === "running") play();
+    }).catch(() => {});
+  }
 }
 
 export function playNightSting(): void {
@@ -127,101 +169,12 @@ export function playTimerAlert(): void {
   });
 }
 
-let _ambientNodes: {
-  master?: GainNode;
-  oscA?: OscillatorNode;
-  oscB?: OscillatorNode;
-  lfo?: OscillatorNode;
-  filter?: BiquadFilterNode;
-  noiseSource?: AudioBufferSourceNode;
-} = {};
-
 export function startAmbientLoop(): void {
   if (getMuted()) return;
-  const ctx = getCtx();
-  if (!ctx) return;
-  if (_ambientNodes.master) return; // already running
-
-  const now = ctx.currentTime;
-
-  const master = ctx.createGain();
-  master.gain.value = 0.0;
-
-  const filter = ctx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.value = 800;
-
-  // Two detuned oscillators for a mellow pad
-  const oscA = ctx.createOscillator();
-  oscA.type = "sine";
-  oscA.frequency.value = 110; // A2
-
-  const oscB = ctx.createOscillator();
-  oscB.type = "sine";
-  oscB.frequency.value = 110 * 1.005; // slight detune
-
-  // Slow LFO to modulate filter for movement
-  const lfo = ctx.createOscillator();
-  lfo.type = "sine";
-  lfo.frequency.value = 0.08; // very slow
-  const lfoGain = ctx.createGain();
-  lfoGain.gain.value = 250;
-  lfo.connect(lfoGain);
-  lfoGain.connect(filter.frequency);
-
-  // Gentle noise layer
-  let noiseSource: AudioBufferSourceNode | undefined;
-  try {
-    const buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.12;
-    noiseSource = ctx.createBufferSource();
-    noiseSource.buffer = buffer;
-    noiseSource.loop = true;
-  } catch {}
-
-  const noiseGain = ctx.createGain();
-  noiseGain.gain.value = 0.02;
-
-  oscA.connect(filter);
-  oscB.connect(filter);
-  filter.connect(master);
-  master.connect(ctx.destination);
-
-  if (noiseSource) {
-    noiseSource.connect(noiseGain);
-    noiseGain.connect(master);
-    noiseSource.start(now);
-  }
-
-  // Fade in
-  master.gain.setValueAtTime(0, now);
-  master.gain.linearRampToValueAtTime(0.18, now + 3.0);
-
-  oscA.start(now);
-  oscB.start(now);
-  lfo.start(now);
-
-  _ambientNodes = { master, oscA, oscB, lfo, filter, noiseSource };
+  lobbyMusic.volume = 0.42;
+  void lobbyMusic.play().catch(() => {});
 }
 
 export function stopAmbientLoop(): void {
-  const ctx = _ctx;
-  if (!ctx || !_ambientNodes.master) return;
-  const now = ctx.currentTime;
-  const master = _ambientNodes.master;
-  master.gain.cancelScheduledValues(now);
-  master.gain.setValueAtTime(master.gain.value, now);
-  master.gain.linearRampToValueAtTime(0.0, now + 1.0);
-
-  // stop nodes after fade
-  setTimeout(() => {
-    try {
-      _ambientNodes.oscA?.stop();
-      _ambientNodes.oscB?.stop();
-      _ambientNodes.lfo?.stop();
-      _ambientNodes.noiseSource?.stop();
-    } catch {}
-    _ambientNodes = {};
-  }, 1100);
+  lobbyMusic.pause();
 }
