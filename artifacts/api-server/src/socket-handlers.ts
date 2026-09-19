@@ -15,7 +15,7 @@ const TYPEWRITER_CHAR_DELAY = 38;
 const TYPEWRITER_LINE_PAUSE = 900;
 const NIGHT_SUMMARY_EXTRA_PAUSE = 3000;
 
-const MIN_PLAYERS = 5;
+const MIN_PLAYERS = 3;
 
 type Role = "mafia" | "civilian" | "doctor" | "detective";
 type Phase =
