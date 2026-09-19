@@ -27,9 +27,6 @@
 # ============================================================================
 minimumReleaseAge: 1440
 
-minimumReleaseAgeExclude:
-  # Add allowed exceptions for urgent package installs (trusted packages only).
-
 packages:
   - artifacts/*
   - lib/*
@@ -37,7 +34,7 @@ packages:
   - scripts
 
 catalog:
-  
+
   '@tailwindcss/vite': ^4.1.14
   '@tanstack/react-query': ^5.90.21
   '@types/node': ^25.3.3
@@ -63,9 +60,11 @@ catalog:
 autoInstallPeers: false
 
 onlyBuiltDependencies:
+  - '@firebase/util'
   - '@swc/core'
   - esbuild
   - msw
+  - protobufjs
   - unrs-resolver
 
 overrides:
@@ -146,4 +145,6 @@ overrides:
   esbuild: "0.27.3"
 
 allowBuilds:
+  '@firebase/util': true
   esbuild: true
+  protobufjs: true

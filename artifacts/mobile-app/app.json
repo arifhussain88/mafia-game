@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Mafia Wars",
+    "slug": "mafia-wars",
+    "scheme": "mafiawars",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.mafiawars.app"
+    },
+    "android": {
+      "package": "com.mafiawars.app",
+      "permissions": [
+        "INTERNET"
+      ],
+      "usesCleartextTraffic": true
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

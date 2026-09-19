@@ -31,6 +31,8 @@ node_modules
 /.sass-cache
 /connect.lock
 /coverage
+/artifacts/mobile-app/.env.local
+/artifacts/mobile-app/.env.*.local
 /libpeerconnection.log
 npm-debug.log
 yarn-error.log
