@@ -174,9 +174,12 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
             <input className={inputCls + " mb-2"} placeholder="Email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
             <input className={inputCls + " mb-2"} placeholder="Date of birth (YYYY-MM-DD)" value={authDob} onChange={(e) => setAuthDob(e.target.value)} />
             <input className={inputCls + " mb-2"} placeholder="Password (min 8 chars)" type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} />
-            <label className="flex items-center gap-2 text-sm text-gray-300 mb-2">
-              <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
-              <span>I accept the <a href="/terms.html" target="_blank" rel="noreferrer" className="underline">Terms of Service</a></span>
+            <label className="flex items-start gap-2 text-sm text-gray-300 mb-2">
+              <input type="checkbox" className="mt-1" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
+              <span>
+                I accept the <a href="/terms.html" target="_blank" rel="noreferrer" className="underline" onClick={(e) => e.stopPropagation()}>Terms of Service</a>
+                {" "}and <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline" onClick={(e) => e.stopPropagation()}>Privacy Policy</a>
+              </span>
             </label>
             {error && <p className="text-red-400 text-sm">{error}</p>}
             <div className="flex gap-2 mt-3">
@@ -263,6 +266,11 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
             </div>
           </>
         )}
+        <p className="text-center text-xs text-gray-500 mt-8">
+          <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline">Privacy Policy</a>
+          {" · "}
+          <a href="/terms.html" target="_blank" rel="noreferrer" className="underline">Terms of Service</a>
+        </p>
       </div>
     </div>
   );

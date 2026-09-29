@@ -1,6 +1,8 @@
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
+import { type LegalDocumentId } from '../content/legal';
+import { LegalDocumentScreen } from './LegalDocumentScreen';
 export const signInModes = ['signin', 'signup'] as const;
 export type AuthMode = (typeof signInModes)[number];
 
@@ -26,6 +28,7 @@ export function AuthScreen({ isSubmitting, errorMessage, onSubmit }: AuthScreenP
   const [password, setPassword] = useState('');
   const [dob, setDob] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [openDocument, setOpenDocument] = useState<LegalDocumentId | null>(null);
 
   const subtitle = useMemo(() => {
     return mode === 'signup' ? 'Create a secure account to play.' : 'Welcome back to the town.';
@@ -123,7 +126,12 @@ export function AuthScreen({ isSubmitting, errorMessage, onSubmit }: AuthScreenP
                     thumbColor={acceptTerms ? '#f4f7fb' : '#dbe5f1'}
                     trackColor={{ false: '#1d3048', true: '#cf5c2c' }}
                   />
-                  <Text style={styles.termsText}>I accept the privacy policy and terms</Text>
+                  <Text style={styles.termsText}>
+                    I accept the{' '}
+                    <Text style={styles.inlineLink} onPress={() => setOpenDocument('privacy')}>Privacy Policy</Text>
+                    {' '}and{' '}
+                    <Text style={styles.inlineLink} onPress={() => setOpenDocument('terms')}>Terms of Service</Text>
+                  </Text>
                 </View>
               </>
             )}
@@ -139,9 +147,19 @@ export function AuthScreen({ isSubmitting, errorMessage, onSubmit }: AuthScreenP
             </Pressable>
           </View>
 
-          <Text style={styles.metaText}>Age gate and privacy policy are required for app store readiness.</Text>
+          <View style={styles.legalLinks}>
+            <Pressable onPress={() => setOpenDocument('privacy')} accessibilityRole="link">
+              <Text style={styles.legalLink}>Privacy Policy</Text>
+            </Pressable>
+            <Text style={styles.legalDot}>·</Text>
+            <Pressable onPress={() => setOpenDocument('terms')} accessibilityRole="link">
+              <Text style={styles.legalLink}>Terms of Service</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.metaText}>You must be 13 or older. You can read both documents before creating an account.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
+      <LegalDocumentScreen documentId={openDocument} onClose={() => setOpenDocument(null)} />
     </View>
   );
 }
@@ -162,7 +180,11 @@ const styles = StyleSheet.create({
   label: { color: '#d7e8ff', fontSize: 13, fontWeight: '700', marginBottom: 8, marginTop: 8 },
   input: { backgroundColor: '#0d1725', borderColor: '#213549', borderWidth: 1, color: '#f2f7ff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, marginBottom: 6 },
   termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, marginBottom: 8 },
-  termsText: { color: '#d8e8ff', marginLeft: 10, flex: 1, fontSize: 13 },
+  termsText: { color: '#d8e8ff', marginLeft: 10, flex: 1, fontSize: 13, lineHeight: 18 },
+  inlineLink: { color: '#f6a86f', textDecorationLine: 'underline', fontWeight: '700' },
+  legalLinks: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 18, gap: 8 },
+  legalLink: { color: '#f6a86f', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
+  legalDot: { color: '#7d97af', fontSize: 13 },
   errorText: { color: '#ffb4a0', fontSize: 12, marginTop: 8, marginBottom: 6 },
   primaryButton: { marginTop: 18, backgroundColor: '#cf5c2c', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
