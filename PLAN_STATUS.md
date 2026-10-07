@@ -15,7 +15,7 @@ Build the current plan, then the next one. Do not start a later plan early.
 
 - [x] [Play readiness review](file:///C:/Users/ArifH/.cursor/plans/play_readiness_review_c312286b.plan.md). Store review. First privacy and terms drafts are in.
 - [x] [Global legal documents](file:///C:/Users/ArifH/.cursor/plans/global_legal_documents_55d149fa.plan.md). Worldwide privacy and terms, linked before signup. Committed and pushed.
-- [x] [Play Store must-haves](file:///C:/Users/ArifH/.cursor/plans/play_store_must-haves_1cdab4a4.plan.md). Four dev-only test logins, fixed roles, day chat with report and block. Built. Not committed.
+- [x] [Play Store must-haves](file:///C:/Users/ArifH/.cursor/plans/play_store_must-haves_1cdab4a4.plan.md). Four dev-only test logins, fixed roles, day chat with report and block. Committed and pushed.
 
 ## Later
 
