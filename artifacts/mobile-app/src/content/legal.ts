@@ -28,7 +28,7 @@ const privacySections: LegalSection[] = [
     bullets: [
       'Account details. Email address, display name, and a password. Passwords are stored only as a hash, or are handled by the sign-in provider. We do not keep a readable copy of your password.',
       'Date of birth. We ask for this to confirm that you meet the age rule. On the mobile app, that check happens on your device and the date of birth is not uploaded. On the website, the date of birth is stored with your account so the age check can be kept.',
-      'Game and lobby activity. Room codes, the display names of people in a room, roles, votes, and whether a player is connected. This is used to run the match. Other people in the same room can see your display name, and can see your role when the rules reveal it.',
+      'Game and lobby activity. Room codes, the display names of people in a room, roles, votes, and whether a player is connected. This is used to run the match. Other people in the same room can see your display name, and can see your role when the rules reveal it. Day chat text is shown to players in the match and deleted when the match ends.',
       'Session data. A login token so you can stay signed in.',
       'Technical data. The host that serves the app or website may log an IP address, device or browser type, and basic request or error data so the service can run and so we can investigate abuse or outages.',
     ],

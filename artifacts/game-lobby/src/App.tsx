@@ -65,6 +65,8 @@ export default function App() {
 
   const [dayVotes, setDayVotes] = useState<Record<string, number>>({});
   const [myDayVote, setMyDayVote] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<{ id: string; name: string; text: string }[]>([]);
+  const blockedNamesRef = useRef<Set<string>>(new Set());
 
   const [dayNarration, setDayNarration] = useState<string | null>(null);
   const [detectiveResult, setDetectiveResult] = useState<{
@@ -147,6 +149,8 @@ export default function App() {
     setMyDetectiveVote(null);
     setDayVotes({});
     setMyDayVote(null);
+    setChatMessages([]);
+    blockedNamesRef.current = new Set();
     setDayNarration(null);
     setDetectiveResult(null);
     setNightSummaryLines([]);
@@ -209,6 +213,9 @@ export default function App() {
           setDetectiveResult(null);
           setNightVoteStatus({ voted: 0, total: 0 });
         }
+        if (data.phase !== "day-vote") {
+          setChatMessages([]);
+        }
         if (data.phase === "day-vote") {
           setDayVotes(data.votes ?? {});
           setMyDayVote(null);
@@ -261,11 +268,17 @@ export default function App() {
       setDayVotes(data.votes);
     });
 
+    socket.on("chat-message", (data: { id: string; name: string; text: string }) => {
+      if (blockedNamesRef.current.has(data.name)) return;
+      setChatMessages((current) => [...current, data]);
+    });
+
     socket.on(
       "day-result",
       (data: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; players: Player[] }) => {
         setPhase("day-result");
         setPlayers(data.players);
+        setChatMessages([]);
         setElimInfo({ name: data.eliminatedName, skipped: data.skipped, phase: "day-result" });
       },
     );
@@ -306,6 +319,13 @@ export default function App() {
   const castDoctorProtect   = useCallback((id: string) => { socketRef.current?.emit("doctor-protect", { targetId: id }); }, []);
   const castDetectiveInvest = useCallback((id: string) => { socketRef.current?.emit("detective-investigate", { targetId: id }); }, []);
   const castDayVote         = useCallback((id: string) => { setMyDayVote(id); socketRef.current?.emit("day-vote", { targetId: id }); }, []);
+  const sendChat            = useCallback((text: string) => { socketRef.current?.emit("send-chat", { text }); }, []);
+  const reportChat          = useCallback((id: string) => { socketRef.current?.emit("report-chat", { id }); }, []);
+  const blockPlayer         = useCallback((name: string) => {
+    blockedNamesRef.current.add(name);
+    setChatMessages((current) => current.filter((message) => message.name !== name));
+    socketRef.current?.emit("block-player", { name });
+  }, []);
   const playAgain           = useCallback(() => { socketRef.current?.emit("play-again"); }, []);
   const beginDay            = useCallback(() => { socketRef.current?.emit("begin-day"); }, []);
 
@@ -387,6 +407,10 @@ export default function App() {
           myDayVote={myDayVote}
           narration={dayNarration}
           detectiveResult={myRole === "detective" ? detectiveResult : null}
+          chatMessages={chatMessages}
+          onSendChat={sendChat}
+          onReportChat={reportChat}
+          onBlockPlayer={blockPlayer}
           onDayVote={castDayVote}
         />
       )}

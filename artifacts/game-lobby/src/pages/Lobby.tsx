@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Player } from "@/App";
 
-const MIN_PLAYERS = 5;
+const MIN_PLAYERS = 3;
 
 type Props = {
   roomCode: string;

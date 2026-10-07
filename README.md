@@ -306,10 +306,10 @@ Mafia-Wars/
 ## ❗ Common Issues
 
 ### "PORT environment variable is required"
-Both the API server and the Vite dev server require a `PORT` env var. See the [Quick Start](#-quick-start-local) commands above.
+The Vite configuration requires a `PORT` value when it is loaded directly. The game-lobby `dev` and `build` scripts provide `5173` by default; set `PORT` explicitly when using another port or a deployment workflow. See the [Quick Start](#-quick-start-local) commands above.
 
 ### "BASE_PATH environment variable is required"
-The Vite config requires `BASE_PATH`. Set it to `/` for local development.
+The game-lobby `dev` and `build` scripts use `/` by default. Set `BASE_PATH` explicitly when the frontend is deployed below a URL subpath.
 
 ### WebSocket connection failed
 - Make sure the API server is running on port 5000 before starting the frontend.

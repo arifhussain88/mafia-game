@@ -36,6 +36,39 @@ function hashPassword(password: string) {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
+const TEST_PASSWORD = "testdev123";
+const TEST_USERS = [
+  { email: "mafia@test.local", name: "Mafia" },
+  { email: "doctor@test.local", name: "Doctor" },
+  { email: "detective@test.local", name: "Detective" },
+  { email: "civilian@test.local", name: "Civilian" },
+];
+
+function isTestEmail(email: string) {
+  return TEST_USERS.some((user) => user.email === email);
+}
+
+function seedTestUsers() {
+  if (process.env.NODE_ENV === "production") return;
+  const store = readStore();
+  let changed = false;
+  for (const testUser of TEST_USERS) {
+    if (store.users.some((user) => user.email === testUser.email)) continue;
+    store.users.push({
+      id: crypto.randomUUID(),
+      name: testUser.name,
+      email: testUser.email,
+      dob: new Date("2000-01-01").toISOString(),
+      passwordHash: hashPassword(TEST_PASSWORD),
+      createdAt: new Date().toISOString(),
+    });
+    changed = true;
+  }
+  if (changed) writeStore(store);
+}
+
+seedTestUsers();
+
 router.post("/signup", (req, res) => {
   const { name, email, password, dob } = req.body ?? {};
   if (!name || !email || !password || !dob) return res.status(400).json({ message: "name, email, password and dob required" });
@@ -65,8 +98,12 @@ router.post("/signup", (req, res) => {
 router.post("/login", (req, res) => {
   const { email, password } = req.body ?? {};
   if (!email || !password) return res.status(400).json({ message: "email and password required" });
+  const normalizedEmail = String(email).toLowerCase();
+  if (process.env.NODE_ENV === "production" && isTestEmail(normalizedEmail)) {
+    return res.status(403).json({ message: "Test accounts are disabled" });
+  }
   const store = readStore();
-  const user = store.users.find((u) => u.email.toLowerCase() === String(email).toLowerCase());
+  const user = store.users.find((u) => u.email.toLowerCase() === normalizedEmail);
   if (!user) return res.status(401).json({ message: "Invalid credentials" });
   if (user.passwordHash !== hashPassword(String(password))) return res.status(401).json({ message: "Invalid credentials" });
   const token = crypto.randomUUID();

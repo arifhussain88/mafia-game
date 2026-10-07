@@ -131,6 +131,40 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
     setUser(null);
   }
 
+  async function handleTestLogin(email: string) {
+    if (!import.meta.env.DEV) return;
+    unlockAudio();
+    setError("");
+    startAmbientLoop();
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: "testdev123" }),
+      });
+      if (!res.ok) {
+        let errMsg = "Login failed";
+        try {
+          const body = await res.json();
+          errMsg = body?.message || errMsg;
+        } catch {
+          try { const text = await res.text(); if (text) errMsg = text; } catch {}
+        }
+        throw new Error(errMsg);
+      }
+      const data = await res.json();
+      localStorage.setItem("mafia-token", data.token);
+      localStorage.setItem("mafia-user", JSON.stringify(data.user));
+      setUser(data.user);
+      setName(data.user.name);
+      setAuthMode("idle");
+      onAuthenticated();
+    } catch (e: any) {
+      stopAmbientLoop();
+      setError(e?.message || String(e));
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
@@ -150,6 +184,24 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
                 </div>
               )}
             </div>
+            {import.meta.env.DEV && !user && view === "main" && (
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {[
+                  ["Mafia", "mafia@test.local"],
+                  ["Doctor", "doctor@test.local"],
+                  ["Detective", "detective@test.local"],
+                  ["Civilian", "civilian@test.local"],
+                ].map(([label, email]) => (
+                  <button
+                    key={email}
+                    onClick={() => handleTestLogin(email)}
+                    className="min-h-[40px] rounded-lg border border-amber-900/60 text-amber-200 text-sm"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex flex-col gap-3">
               {user ? (
                 <>
