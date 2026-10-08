@@ -18,8 +18,6 @@ type Props = {
   detectiveResult: { targetName: string; isMafia: boolean } | null;
   chatMessages: { id: string; name: string; text: string }[];
   onSendChat: (text: string) => void;
-  onReportChat: (id: string) => void;
-  onBlockPlayer: (name: string) => void;
   onDayVote: (targetId: string) => void;
 };
 
@@ -36,8 +34,6 @@ export default function DayPhase({
   detectiveResult,
   chatMessages,
   onSendChat,
-  onReportChat,
-  onBlockPlayer,
   onDayVote,
 }: Props) {
   const countdown = useCountdown(timerEndsAt);
@@ -56,7 +52,6 @@ export default function DayPhase({
   const amAlive = me?.alive ?? false;
   const isVoting = subPhase === "day-vote";
   const [draft, setDraft] = useState("");
-  const [reportedIds, setReportedIds] = useState<string[]>([]);
 
   const actionMode: ActionMode = isVoting && amAlive ? "day-vote" : "none";
 
@@ -67,20 +62,15 @@ export default function DayPhase({
 
   return (
     <div className="min-h-screen flex flex-col items-center px-4 py-6 md:py-10">
-
-      {/* Header */}
-      <div className="w-full max-w-sm md:max-w-2xl mb-3 md:mb-4">
+      <div className="game-panel w-full max-w-sm md:max-w-2xl px-4 py-4 md:px-6 md:py-5 mb-3 md:mb-4">
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-3">
-            <span className="text-xl md:text-2xl">☀️</span>
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold text-amber-100 tracking-widest">
-                {isVoting ? "VOTE" : "DAY"}
-              </h1>
-              <p className="text-xs md:text-sm text-amber-800 font-medium">
-                {isVoting ? "Tap a player to vote them out" : "Discuss — then vote begins"}
-              </p>
-            </div>
+          <div>
+            <h1 className="font-display text-xl md:text-2xl font-bold text-amber-100 tracking-widest">
+              {isVoting ? "VOTE" : "DAY"}
+            </h1>
+            <p className="text-xs md:text-sm text-amber-700/90 font-medium">
+              {isVoting ? "Tap a player to vote them out" : "Discuss — then vote begins"}
+            </p>
           </div>
           <div className={`text-3xl md:text-4xl font-mono font-bold tabular-nums ${countdownCls}`}>
             {countdown}s
@@ -155,37 +145,16 @@ export default function DayPhase({
         )}
       </div>
 
-      <div className="w-full max-w-sm md:max-w-lg mt-4">
-        <div className="max-h-32 overflow-y-auto rounded-xl bg-gray-950/70 border border-gray-800 px-3 py-2 flex flex-col gap-2">
+      <div className="game-panel w-full max-w-sm md:max-w-lg mt-4 px-3 py-3">
+        <div className="max-h-32 overflow-y-auto rounded-xl bg-black/30 border border-white/5 px-3 py-2 flex flex-col gap-2">
           {chatMessages.length === 0 ? (
             <p className="text-gray-600 text-xs">No messages yet.</p>
           ) : (
             chatMessages.map((message) => (
-              <div key={message.id} className="flex items-start justify-between gap-2">
-                <p className="text-sm text-gray-200 break-words">
-                  <span className="font-semibold text-amber-200">{message.name}: </span>
-                  {message.text}
-                </p>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    className="text-[10px] uppercase tracking-wide text-gray-500"
-                    onClick={() => {
-                      onReportChat(message.id);
-                      setReportedIds((current) => current.includes(message.id) ? current : [...current, message.id]);
-                    }}
-                  >
-                    {reportedIds.includes(message.id) ? "Reported" : "Report"}
-                  </button>
-                  <button
-                    type="button"
-                    className="text-[10px] uppercase tracking-wide text-gray-500"
-                    onClick={() => onBlockPlayer(message.name)}
-                  >
-                    Block
-                  </button>
-                </div>
-              </div>
+              <p key={message.id} className="text-sm text-gray-200 break-words">
+                <span className="font-semibold text-amber-200">{message.name}: </span>
+                {message.text}
+              </p>
             ))
           )}
         </div>
@@ -207,7 +176,7 @@ export default function DayPhase({
               placeholder="Say something to the town"
               className="flex-1 min-h-[44px] px-3 rounded-xl bg-gray-900 border border-gray-700 text-white text-sm"
             />
-            <button type="submit" className="min-h-[44px] px-4 rounded-xl bg-amber-700 text-white text-sm font-semibold">
+            <button type="submit" className="min-h-[44px] px-4 rounded-xl bg-amber-700 text-white text-sm font-semibold cursor-pointer">
               Send
             </button>
           </form>

@@ -2,6 +2,7 @@ import { Server, Socket } from "socket.io";
 import { logger } from "./lib/logger";
 
 const TIMERS = {
+  MATCH_COUNTDOWN: 5000,
   ROLE_REVEAL: 6000,
   NIGHT_STEP: 30000,
   NIGHT_EARLY_ADVANCE: 2000,
@@ -20,6 +21,7 @@ const MIN_PLAYERS = 3;
 type Role = "mafia" | "civilian" | "doctor" | "detective";
 type Phase =
   | "lobby"
+  | "match-countdown"
   | "role-reveal"
   | "night-mafia"
   | "night-doctor"
@@ -207,10 +209,30 @@ function broadcastNightVoteStatus(io: Server, code: string) {
   io.to(code).emit("night-vote-status", { voted, total });
 }
 
+function startMatchCountdown(io: Server, code: string) {
+  const room = rooms.get(code);
+  if (!room) return;
+
+  clearRoomTimer(room);
+  room.phase = "match-countdown";
+  const endsAt = Date.now() + TIMERS.MATCH_COUNTDOWN;
+  room.timerEndsAt = endsAt;
+
+  io.to(code).emit("game-phase", {
+    phase: "match-countdown",
+    endsAt,
+    players: serializePlayers(room.players),
+  });
+
+  room.timer = setTimeout(() => startRoleReveal(io, code), TIMERS.MATCH_COUNTDOWN);
+  logger.info({ code, n: room.players.size }, "Match countdown started");
+}
+
 function startRoleReveal(io: Server, code: string) {
   const room = rooms.get(code);
   if (!room) return;
 
+  clearRoomTimer(room);
   room.phase = "role-reveal";
   assignRoles(room);
 
@@ -663,7 +685,7 @@ export function registerSocketHandlers(io: Server) {
           return;
         }
         if (room.phase !== "lobby") return;
-        startRoleReveal(io, code);
+        startMatchCountdown(io, code);
         return;
       }
     });

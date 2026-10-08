@@ -42,25 +42,22 @@ export default function GameOver({ winner, players, mySocketId, isHost, onPlayAg
   return (
     <div className="min-h-screen flex flex-col items-center px-4 py-8">
 
-      {/* Pre-reveal suspense label */}
       {!showResult && (
-        <div className="w-full max-w-sm md:max-w-2xl text-center py-1 mb-2">
-          <p className="text-gray-700 text-xs md:text-sm uppercase tracking-widest animate-pulse">Game Over — Revealing Roles…</p>
+        <div className="game-panel w-full max-w-sm md:max-w-2xl text-center py-3 px-4 mb-3">
+          <p className="text-gray-400 text-xs md:text-sm uppercase tracking-widest animate-pulse">Game Over — Revealing Roles…</p>
         </div>
       )}
 
-      {/* Winner result banner */}
       {showResult && (
         <div
-          className={`w-full max-w-sm md:max-w-md rounded-2xl border px-6 py-5 text-center transition-opacity duration-700 mb-4 ${
+          className={`game-panel w-full max-w-sm md:max-w-md px-6 py-5 text-center transition-opacity duration-700 mb-4 ${
             mafiaWon
-              ? "bg-red-950/30 border-red-900/50 shadow-[0_0_48px_rgba(127,29,29,0.15)]"
-              : "bg-amber-950/20 border-amber-900/30 shadow-[0_0_48px_rgba(120,53,15,0.1)]"
+              ? "shadow-[0_0_48px_rgba(127,29,29,0.2)]"
+              : "shadow-[0_0_48px_rgba(120,53,15,0.15)]"
           }`}
           style={{ opacity: showResult ? 1 : 0 }}
         >
-          <div className="text-4xl mb-2">{mafiaWon ? "🔪" : "🏆"}</div>
-          <h1 className={`text-3xl md:text-4xl font-bold mb-1 ${mafiaWon ? "text-red-400" : "text-amber-400"}`}>
+          <h1 className={`font-display text-3xl md:text-4xl font-bold mb-1 ${mafiaWon ? "text-red-400" : "text-amber-400"}`}>
             {mafiaWon ? "Mafia Wins" : "Town Wins"}
           </h1>
           <p className="text-gray-500 text-xs md:text-sm leading-relaxed">
@@ -84,9 +81,8 @@ export default function GameOver({ winner, players, mySocketId, isHost, onPlayAg
         circleSize={circleSize}
       />
 
-      {/* Role breakdown list */}
       <div
-        className="w-full max-w-sm md:max-w-md mt-4"
+        className="game-panel w-full max-w-sm md:max-w-md mt-4 px-4 py-4"
         style={{
           transition: "opacity 0.7s ease",
           opacity: showRoles ? 1 : 0,
@@ -129,12 +125,12 @@ export default function GameOver({ winner, players, mySocketId, isHost, onPlayAg
         })}
       </div>
 
-      {/* Play Again */}
       <div className="w-full max-w-xs mt-4 pb-4">
         {isHost ? (
           <button
+            type="button"
             onClick={onPlayAgain}
-            className="w-full min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-base md:text-lg font-semibold transition-colors"
+            className="w-full min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-base md:text-lg font-semibold transition-colors cursor-pointer"
           >
             Play Again
           </button>

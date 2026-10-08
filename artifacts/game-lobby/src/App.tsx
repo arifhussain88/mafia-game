@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import Home from "@/pages/Home";
 import Lobby from "@/pages/Lobby";
+import MatchCountdown from "@/pages/MatchCountdown";
 import RoleReveal from "@/pages/RoleReveal";
 import NightPhase from "@/pages/NightPhase";
 import NightSummary from "@/pages/NightSummary";
@@ -12,7 +13,7 @@ import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
 import MuteToggle from "@/components/MuteToggle";
 import Atmosphere from "@/components/Atmosphere";
-import { playNightSting, playDayChime, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
+import { playNightSting, playDayChime, playSwordSlash, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
 
@@ -28,6 +29,7 @@ export type Player = {
 export type GamePhase =
   | "home"
   | "lobby"
+  | "match-countdown"
   | "role-reveal"
   | "night-mafia"
   | "night-doctor"
@@ -261,6 +263,7 @@ export default function App() {
         setNightSummaryLines(data.lines);
         setPlayers(data.players);
         setPhase("night-summary");
+        if (data.eliminatedId) playSwordSlash();
       },
     );
 
@@ -320,12 +323,6 @@ export default function App() {
   const castDetectiveInvest = useCallback((id: string) => { socketRef.current?.emit("detective-investigate", { targetId: id }); }, []);
   const castDayVote         = useCallback((id: string) => { setMyDayVote(id); socketRef.current?.emit("day-vote", { targetId: id }); }, []);
   const sendChat            = useCallback((text: string) => { socketRef.current?.emit("send-chat", { text }); }, []);
-  const reportChat          = useCallback((id: string) => { socketRef.current?.emit("report-chat", { id }); }, []);
-  const blockPlayer         = useCallback((name: string) => {
-    blockedNamesRef.current.add(name);
-    setChatMessages((current) => current.filter((message) => message.name !== name));
-    socketRef.current?.emit("block-player", { name });
-  }, []);
   const playAgain           = useCallback(() => { socketRef.current?.emit("play-again"); }, []);
   const beginDay            = useCallback(() => { socketRef.current?.emit("begin-day"); }, []);
 
@@ -357,6 +354,10 @@ export default function App() {
           onStartGame={startGame}
           onKickPlayer={kickPlayer}
         />
+      )}
+
+      {phase === "match-countdown" && (
+        <MatchCountdown players={players} timerEndsAt={timerEndsAt} />
       )}
 
       {phase === "role-reveal" && myRole && (
@@ -409,8 +410,6 @@ export default function App() {
           detectiveResult={myRole === "detective" ? detectiveResult : null}
           chatMessages={chatMessages}
           onSendChat={sendChat}
-          onReportChat={reportChat}
-          onBlockPlayer={blockPlayer}
           onDayVote={castDayVote}
         />
       )}

@@ -12,9 +12,9 @@ export default function Atmosphere({ phase }: Props) {
     phase === "night-summary";
 
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-[-1]">
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-[-1] bg-[#0F172A]">
 
-      {/* Mobile: full-cover background image (use the provided asset at /background-mobile.jpg) */}
+      {/* Mobile: full-cover background image */}
       <div
         className="absolute inset-0 sm:hidden"
         style={{
@@ -22,47 +22,50 @@ export default function Atmosphere({ phase }: Props) {
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",
+          opacity: 0.55,
+          filter: "grayscale(10%) brightness(65%)",
         }}
       />
 
-      {/* Desktop/laptop: center the image within the viewport (contain) */}
+      {/* Desktop/laptop: centered art, raised visibility */}
       <div className="hidden sm:flex absolute inset-0 items-center justify-center pointer-events-none">
         <div
-          className="w-full h-full flex items-center justify-center"
+          className="max-w-[1100px] max-h-[700px] w-full h-full"
           style={{
-            pointerEvents: "none",
+            backgroundImage: `url(/background-mobile.jpg)`,
+            backgroundSize: "contain",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            opacity: 0.38,
+            filter: "grayscale(10%) brightness(70%)",
           }}
-        >
-          <div
-            className="max-w-[1100px] max-h-[700px] w-full h-full"
-            style={{
-              backgroundImage: `url(/background-mobile.jpg)`,
-              backgroundSize: "contain",
-              backgroundPosition: "center",
-              backgroundRepeat: "no-repeat",
-              opacity: 0.12,
-              filter: "grayscale(15%) brightness(70%)",
-            }}
-          />
-        </div>
+        />
       </div>
+
+      {/* Dark gradient scrim for readable panels on both viewports */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: isNightPhase
+            ? "linear-gradient(180deg, rgba(8,10,16,0.55) 0%, rgba(8,10,16,0.78) 45%, rgba(8,10,16,0.92) 100%)"
+            : "linear-gradient(180deg, rgba(8,10,16,0.45) 0%, rgba(8,10,16,0.72) 50%, rgba(8,10,16,0.9) 100%)",
+        }}
+      />
 
       <svg
         className="absolute inset-0 w-full h-full"
         viewBox="0 0 800 600"
         preserveAspectRatio="xMidYMid slice"
         xmlns="http://www.w3.org/2000/svg"
-        style={{ mixBlendMode: "screen", opacity: 0.55, pointerEvents: "none" }}
+        style={{ mixBlendMode: "screen", opacity: 0.4, pointerEvents: "none" }}
       >
         <defs>
           <filter id="blur"><feGaussianBlur stdDeviation="36" /></filter>
         </defs>
 
-        {/* transparent base so underlying image shows through */}
         <rect width="100%" height="100%" fill="transparent" />
 
-        {/* animated soft blobs (darker, tenser colors) overlayed with screen blend */}
-        <g filter="url(#blur)" opacity="0.6">
+        <g filter="url(#blur)" opacity="0.55">
           <circle cx="200" cy="180" r="120" fill={isNightPhase ? "#5b0b3f" : "#2b0c05"}>
             <animate attributeName="cx" dur="12s" values="160;220;200;160" repeatCount="indefinite" />
             <animate attributeName="cy" dur="18s" values="150;200;170;150" repeatCount="indefinite" />
@@ -80,7 +83,6 @@ export default function Atmosphere({ phase }: Props) {
           </circle>
         </g>
 
-        {/* subtle stars / particles */}
         <g opacity="0.12" fill="#fff">
           {Array.from({ length: 28 }).map((_, i) => {
             const x = 30 + ((i * 73) % 760);

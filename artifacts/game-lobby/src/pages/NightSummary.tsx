@@ -51,16 +51,11 @@ export default function NightSummary({ lines }: Props) {
       : null;
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center px-6 py-12"
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+      <div className="game-panel w-full max-w-md md:max-w-xl px-6 py-8 flex flex-col gap-8">
 
-    >
-      <div className="w-full max-w-md md:max-w-xl flex flex-col gap-8">
-
-        {/* Header */}
         <div className="text-center">
-          <span className="text-4xl md:text-5xl">🌙</span>
-          <p className="text-gray-700 text-xs md:text-sm uppercase tracking-[0.2em] mt-3 font-medium">
+          <p className="font-display text-amber-200/70 text-xs md:text-sm uppercase tracking-[0.2em] font-medium">
             Night Report
           </p>
         </div>

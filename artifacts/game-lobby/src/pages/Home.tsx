@@ -1,4 +1,5 @@
 import { useState } from "react";
+import HowToPlay from "@/components/HowToPlay";
 import { startAmbientLoop, stopAmbientLoop, unlockAudio } from "@/lib/audio";
 
 type Props = {
@@ -35,6 +36,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
   const [user, setUser] = useState<{ id: string; name: string } | null>(() => {
     try { return JSON.parse(localStorage.getItem("mafia-user") || "null"); } catch { return null; }
   });
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
 
   function handleCreate() {
     const trimmed = name.trim();
@@ -168,23 +170,27 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
-        {view === "main" && (
-          <>
+        {view === "main" && authMode === "idle" && (
+          <div className="game-panel px-5 py-6">
             <div className="text-center mb-6">
-              <div className="text-6xl mb-4">🔪</div>
-              <h1 className="text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-rose-300 mb-2">Mafia Wars</h1>
-              <p className="text-red-200 text-sm italic mb-4">The Town has a problem</p>
+              <h1 className="font-display text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-rose-300 to-red-500 mb-2">
+                Mafia Wars
+              </h1>
+              <p className="text-amber-200/80 text-sm italic mb-4">The Town has a problem</p>
 
               {user ? (
-                <div className="text-sm text-gray-300">Signed in as <strong className="text-white">{user.name}</strong> <button className="ml-3 text-xs underline" onClick={handleLogout}>Log out</button></div>
+                <div className="text-sm text-gray-300">
+                  Signed in as <strong className="text-white">{user.name}</strong>{" "}
+                  <button type="button" className="ml-3 text-xs underline cursor-pointer" onClick={handleLogout}>Log out</button>
+                </div>
               ) : (
                 <div className="flex gap-2 justify-center mt-3">
-                  <button onClick={() => { setAuthMode("signup"); setError(""); }} className="px-3 py-2 bg-transparent border border-gray-700 rounded text-sm text-gray-200">Sign up</button>
-                  <button onClick={() => { setAuthMode("login"); setError(""); }} className="px-3 py-2 bg-transparent border border-gray-700 rounded text-sm text-gray-200">Log in</button>
+                  <button type="button" onClick={() => { setAuthMode("signup"); setError(""); }} className="px-3 py-2 bg-transparent border border-gray-700 rounded text-sm text-gray-200 cursor-pointer hover:border-amber-500/40 transition-colors">Sign up</button>
+                  <button type="button" onClick={() => { setAuthMode("login"); setError(""); }} className="px-3 py-2 bg-transparent border border-gray-700 rounded text-sm text-gray-200 cursor-pointer hover:border-amber-500/40 transition-colors">Log in</button>
                 </div>
               )}
             </div>
-            {import.meta.env.DEV && !user && view === "main" && (
+            {import.meta.env.DEV && !user && (
               <div className="grid grid-cols-2 gap-2 mb-4">
                 {[
                   ["Mafia", "mafia@test.local"],
@@ -194,8 +200,9 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
                 ].map(([label, email]) => (
                   <button
                     key={email}
+                    type="button"
                     onClick={() => handleTestLogin(email)}
-                    className="min-h-[40px] rounded-lg border border-amber-900/60 text-amber-200 text-sm"
+                    className="min-h-[40px] rounded-lg border border-amber-900/60 text-amber-200 text-sm cursor-pointer hover:bg-amber-950/40 transition-colors"
                   >
                     {label}
                   </button>
@@ -205,29 +212,45 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
             <div className="flex flex-col gap-3">
               {user ? (
                 <>
-                  <button onClick={() => { setView("create"); setError(""); }} className={primaryBtn}>
+                  <button type="button" onClick={() => { setView("create"); setError(""); }} className={`${primaryBtn} cursor-pointer`}>
                     Create Room
                   </button>
-                  <button onClick={() => { setView("join"); setError(""); }} className={secondaryBtn}>
+                  <button type="button" onClick={() => { setView("join"); setError(""); }} className={`${secondaryBtn} cursor-pointer`}>
                     Join Room
                   </button>
                 </>
               ) : (
                 <div className="text-sm text-gray-400 text-center">Please sign up or log in to create or join rooms.</div>
               )}
+              <button
+                type="button"
+                onClick={() => setHowToPlayOpen(true)}
+                className={`${ghostBtn} cursor-pointer`}
+              >
+                How to play
+              </button>
             </div>
-          </>
+          </div>
         )}
 
         {authMode === "signup" && !user && (
-          <div className="mt-6">
-            <h3 className="text-lg font-semibold text-white mb-2">Sign up</h3>
+          <div className="game-panel px-5 py-6">
+            <h3 className="font-display text-xl font-semibold text-white mb-3">Sign up</h3>
             <input className={inputCls + " mb-2"} placeholder="Display name" value={authName} onChange={(e) => setAuthName(e.target.value)} />
             <input className={inputCls + " mb-2"} placeholder="Email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
-            <input className={inputCls + " mb-2"} placeholder="Date of birth (YYYY-MM-DD)" value={authDob} onChange={(e) => setAuthDob(e.target.value)} />
+            <label className="flex flex-col gap-1 mb-2">
+              <span className="text-sm font-medium text-gray-400">Date of birth</span>
+              <input
+                className={`${inputCls} [color-scheme:dark]`}
+                type="date"
+                value={authDob}
+                onChange={(e) => setAuthDob(e.target.value)}
+                max={new Date().toISOString().slice(0, 10)}
+              />
+            </label>
             <input className={inputCls + " mb-2"} placeholder="Password (min 8 chars)" type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} />
             <label className="flex items-start gap-2 text-sm text-gray-300 mb-2">
-              <input type="checkbox" className="mt-1" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
+              <input type="checkbox" className="mt-1 cursor-pointer" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
               <span>
                 I accept the <a href="/terms.html" target="_blank" rel="noreferrer" className="underline" onClick={(e) => e.stopPropagation()}>Terms of Service</a>
                 {" "}and <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline" onClick={(e) => e.stopPropagation()}>Privacy Policy</a>
@@ -235,29 +258,29 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
             </label>
             {error && <p className="text-red-400 text-sm">{error}</p>}
             <div className="flex gap-2 mt-3">
-              <button className={primaryBtn} onClick={handleSignup}>Create account</button>
-              <button className={ghostBtn} onClick={() => setAuthMode("idle")}>Cancel</button>
+              <button type="button" className={`${primaryBtn} cursor-pointer`} onClick={handleSignup}>Create account</button>
+              <button type="button" className={`${ghostBtn} cursor-pointer`} onClick={() => setAuthMode("idle")}>Cancel</button>
             </div>
           </div>
         )}
 
         {authMode === "login" && !user && (
-          <div className="mt-6">
-            <h3 className="text-lg font-semibold text-white mb-2">Log in</h3>
+          <div className="game-panel px-5 py-6">
+            <h3 className="font-display text-xl font-semibold text-white mb-3">Log in</h3>
             <input className={inputCls + " mb-2"} placeholder="Email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
             <input className={inputCls + " mb-2"} placeholder="Password" type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} />
             {error && <p className="text-red-400 text-sm">{error}</p>}
             <div className="flex gap-2 mt-3">
-              <button className={primaryBtn} onClick={handleLogin}>Log in</button>
-              <button className={ghostBtn} onClick={() => setAuthMode("idle")}>Cancel</button>
+              <button type="button" className={`${primaryBtn} cursor-pointer`} onClick={handleLogin}>Log in</button>
+              <button type="button" className={`${ghostBtn} cursor-pointer`} onClick={() => setAuthMode("idle")}>Cancel</button>
             </div>
           </div>
         )}
 
         {view === "create" && (
-          <>
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-1">Create a room</h2>
+          <div className="game-panel px-5 py-6">
+            <div className="mb-6">
+              <h2 className="font-display text-2xl font-bold text-white mb-1">Create a room</h2>
               <p className="text-gray-500 text-sm">You'll be the host.</p>
             </div>
             <div className="flex flex-col gap-4">
@@ -275,16 +298,16 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
                 />
               </label>
               {error && <p className="text-red-400 text-sm">{error}</p>}
-              <button onClick={handleCreate} className={primaryBtn}>Create Room</button>
-              <button onClick={() => { setView("main"); setError(""); setName(""); }} className={ghostBtn}>Back</button>
+              <button type="button" onClick={handleCreate} className={`${primaryBtn} cursor-pointer`}>Create Room</button>
+              <button type="button" onClick={() => { setView("main"); setError(""); setName(""); }} className={`${ghostBtn} cursor-pointer`}>Back</button>
             </div>
-          </>
+          </div>
         )}
 
         {view === "join" && (
-          <>
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-1">Join a room</h2>
+          <div className="game-panel px-5 py-6">
+            <div className="mb-6">
+              <h2 className="font-display text-2xl font-bold text-white mb-1">Join a room</h2>
               <p className="text-gray-500 text-sm">Enter the 5-letter code from the host.</p>
             </div>
             <div className="flex flex-col gap-4">
@@ -313,10 +336,10 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
                 />
               </label>
               {error && <p className="text-red-400 text-sm">{error}</p>}
-              <button onClick={handleJoin} className={primaryBtn}>Join Room</button>
-              <button onClick={() => { setView("main"); setError(""); setName(""); setCode(""); }} className={ghostBtn}>Back</button>
+              <button type="button" onClick={handleJoin} className={`${primaryBtn} cursor-pointer`}>Join Room</button>
+              <button type="button" onClick={() => { setView("main"); setError(""); setName(""); setCode(""); }} className={`${ghostBtn} cursor-pointer`}>Back</button>
             </div>
-          </>
+          </div>
         )}
         <p className="text-center text-xs text-gray-500 mt-8">
           <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline">Privacy Policy</a>
@@ -324,6 +347,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
           <a href="/terms.html" target="_blank" rel="noreferrer" className="underline">Terms of Service</a>
         </p>
       </div>
+      <HowToPlay open={howToPlayOpen} onOpenChange={setHowToPlayOpen} />
     </div>
   );
 }

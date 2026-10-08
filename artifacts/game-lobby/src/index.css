@@ -168,7 +168,8 @@
   --chart-5: red; /*replace with H S L */
 
   --app-font-sans: 'Inter', sans-serif;
-  --app-font-serif: Georgia, serif;
+  --app-font-display: 'Playfair Display', Georgia, serif;
+  --app-font-serif: 'Playfair Display', Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: .5rem; /* 8px */
   --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00); /*replace with H S L */
@@ -466,4 +467,24 @@
   background-image: radial-gradient(ellipse at 50% 50%, rgba(200, 200, 220, 0.08) 0%, transparent 70%);
   animation: fog-drift-3 35s infinite ease-in-out;
   animation-delay: -20s;
+}
+
+.font-display {
+  font-family: var(--app-font-display);
+}
+
+.game-panel {
+  background: rgba(8, 10, 16, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fog-1,
+  .fog-2,
+  .fog-3 {
+    animation: none;
+  }
 }

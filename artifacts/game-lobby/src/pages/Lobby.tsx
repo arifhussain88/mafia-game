@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Player } from "@/App";
+import HowToPlay from "@/components/HowToPlay";
 
 const MIN_PLAYERS = 3;
 
@@ -15,6 +16,7 @@ type Props = {
 export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGame, onKickPlayer }: Props) {
   const [copied, setCopied] = useState(false);
   const [kickConfirm, setKickConfirm] = useState<string | null>(null);
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
 
   function handleCopy() {
     navigator.clipboard.writeText(roomCode).then(() => {
@@ -38,13 +40,14 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
 
   return (
     <div className="min-h-screen flex flex-col items-center px-4 py-10">
-      <div className="w-full max-w-sm">
+      <div className="game-panel w-full max-w-sm px-5 py-6">
 
         <div className="text-center mb-8">
-          <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-3">Room Code</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Room Code</p>
           <button
+            type="button"
             onClick={handleCopy}
-            className="inline-flex items-center gap-3 min-h-[64px] px-8 rounded-2xl bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-amber-500/40 transition-colors group"
+            className="inline-flex items-center gap-3 min-h-[64px] px-8 rounded-2xl bg-gray-900/80 hover:bg-gray-800 border border-gray-700 hover:border-amber-500/40 transition-colors group cursor-pointer"
             title="Tap to copy"
           >
             <span className="text-4xl font-bold tracking-widest text-white font-mono">
@@ -103,11 +106,12 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
         {isHost ? (
           <div className="flex flex-col gap-3">
             <button
+              type="button"
               onClick={onStartGame}
               disabled={!canStart}
               className={`w-full min-h-[56px] rounded-xl text-white text-lg font-semibold transition-colors ${
                 canStart
-                  ? "bg-amber-600 hover:bg-amber-500 active:bg-amber-700"
+                  ? "bg-amber-600 hover:bg-amber-500 active:bg-amber-700 cursor-pointer"
                   : "bg-gray-800 cursor-not-allowed text-gray-600 border border-gray-800"
               }`}
             >
@@ -127,7 +131,16 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
             </div>
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={() => setHowToPlayOpen(true)}
+          className="w-full min-h-[52px] mt-4 rounded-xl bg-transparent border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 text-base transition-colors cursor-pointer"
+        >
+          How to play
+        </button>
       </div>
+      <HowToPlay open={howToPlayOpen} onOpenChange={setHowToPlayOpen} />
     </div>
   );
 }
