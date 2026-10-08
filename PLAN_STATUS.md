@@ -4,9 +4,16 @@ Build the current plan, then the next one. Do not start a later plan early.
 
 ## Now
 
-- [ ] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md)
-  - Deploy HTTPS site + always-on API, lock CORS, durable accounts
-  - Harden auth and sockets; fix terms/chat honesty; run security and safety checks
+- [ ] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md) — continue tomorrow
+  - You first: [fly.io sign-up](https://fly.io/app/sign-up) + `fly auth login`, then say “Fly login done — deploy”
+  - Agent: code harden + one Fly app (`*.fly.dev`, region `sin`, no domain) + live checks
+
+## Deferred (after live)
+
+- [ ] [Google ads revenue](file:///C:/Users/ArifH/.cursor/plans/google_ads_revenue_628e3cc9.plan.md)
+  - Do this yourself after the game is live on Fly
+  - One ad at game over, optional rewarded ad, no ads during a live match
+  - Not part of the first public upload / go-live pass
 
 ## Done
 
