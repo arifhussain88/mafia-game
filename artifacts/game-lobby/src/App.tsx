@@ -96,9 +96,9 @@ export default function App() {
     if (phase === "day-discussion") playDayChime();
   }, [phase]);
 
-  // Ambient loop plays only in the lobby and after the game ends.
+  // Ambient loop on the opening screen, in the lobby, and after the game ends.
   useEffect(() => {
-    const ambientActive = isAuthenticated && (phase === "home" || phase === "lobby" || phase === "game-over");
+    const ambientActive = phase === "home" || phase === "lobby" || phase === "game-over";
     if (ambientActive && !isMuted()) {
       unlockAudio();
       startAmbientLoop();
@@ -120,22 +120,21 @@ export default function App() {
   }, [phase]);
 
   useEffect(() => {
-    const ambientActive = isAuthenticated && (phase === "home" || phase === "lobby" || phase === "game-over");
+    const ambientActive = phase === "home" || phase === "lobby" || phase === "game-over";
+    if (!ambientActive) return;
 
     function unlockOnGesture() {
-      if (ambientActive) {
-        unlockAudio();
-        if (!isMuted()) startAmbientLoop();
-      }
+      unlockAudio();
+      if (!isMuted()) startAmbientLoop();
     }
 
-    window.addEventListener("pointerdown", unlockOnGesture, { once: true });
-    window.addEventListener("keydown", unlockOnGesture, { once: true });
+    window.addEventListener("pointerdown", unlockOnGesture);
+    window.addEventListener("keydown", unlockOnGesture);
     return () => {
       window.removeEventListener("pointerdown", unlockOnGesture);
       window.removeEventListener("keydown", unlockOnGesture);
     };
-  }, [phase, isAuthenticated]);
+  }, [phase]);
 
   function resetForLobby(newPlayers: Player[], socketId: string) {
     setPlayers(newPlayers);
@@ -163,10 +162,40 @@ export default function App() {
   }
 
   useEffect(() => {
-    const socket = io({ path: "/socket.io" });
+    let token: string | null = null;
+    try { token = localStorage.getItem("mafia-token"); } catch { token = null; }
+
+    const socket = io({
+      path: "/socket.io",
+      auth: token ? { token } : {},
+      autoConnect: Boolean(token),
+    });
     socketRef.current = socket;
 
     socket.on("connect", () => setMySocketId(socket.id ?? ""));
+
+    socket.on("connect_error", (err) => {
+      if (err.message === "Unauthorized" || /unauthorized/i.test(err.message)) {
+        try {
+          localStorage.removeItem("mafia-token");
+          localStorage.removeItem("mafia-user");
+        } catch {}
+        setIsAuthenticated(false);
+        setPhase("home");
+        toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Connection issue", description: "Trying to reconnect…" });
+    });
+
+    socket.io.on("reconnect", () => {
+      toast({ title: "Back online", description: "Connection restored." });
+    });
+
+    socket.on("disconnect", (reason) => {
+      if (reason === "io client disconnect") return;
+      toast({ title: "Disconnected", description: "Reconnecting…" });
+    });
 
     socket.on("room-created", (data: { code: string; players: Player[]; isHost: boolean }) => {
       setRoomCode(data.code);
@@ -323,12 +352,33 @@ export default function App() {
   const castDetectiveInvest = useCallback((id: string) => { socketRef.current?.emit("detective-investigate", { targetId: id }); }, []);
   const castDayVote         = useCallback((id: string) => { setMyDayVote(id); socketRef.current?.emit("day-vote", { targetId: id }); }, []);
   const sendChat            = useCallback((text: string) => { socketRef.current?.emit("send-chat", { text }); }, []);
+  const reportChat          = useCallback((id: string) => {
+    socketRef.current?.emit("report-chat", { id });
+    toast({ title: "Reported", description: "Thanks — we'll review this message." });
+  }, [toast]);
+  const blockPlayer         = useCallback((name: string) => {
+    blockedNamesRef.current.add(name);
+    socketRef.current?.emit("block-player", { name });
+    setChatMessages((current) => current.filter((m) => m.name !== name));
+    toast({ title: "Blocked", description: `${name} is hidden from your chat.` });
+  }, [toast]);
   const playAgain           = useCallback(() => { socketRef.current?.emit("play-again"); }, []);
   const beginDay            = useCallback(() => { socketRef.current?.emit("begin-day"); }, []);
 
+  // Connect socket once the user authenticates on the home screen
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const socket = socketRef.current;
+    if (!socket) return;
+    let token: string | null = null;
+    try { token = localStorage.getItem("mafia-token"); } catch { token = null; }
+    if (!token) return;
+    socket.auth = { token };
+    if (!socket.connected) socket.connect();
+  }, [isAuthenticated]);
+
+
   const isNightPhase = phase === "night-mafia" || phase === "night-doctor" || phase === "night-detective";
-  // show mute in lobby and gameplay
-  const showMuteToggle = phase !== "home" || isAuthenticated;
 
   return (
     <div className="game-shell min-h-screen text-gray-100 relative z-0">
@@ -341,6 +391,10 @@ export default function App() {
             setIsAuthenticated(true);
             unlockAudio();
             if (!isMuted()) startAmbientLoop();
+          }}
+          onLogout={() => {
+            setIsAuthenticated(false);
+            socketRef.current?.disconnect();
           }}
         />
       )}
@@ -410,6 +464,8 @@ export default function App() {
           detectiveResult={myRole === "detective" ? detectiveResult : null}
           chatMessages={chatMessages}
           onSendChat={sendChat}
+          onReportChat={reportChat}
+          onBlockPlayer={blockPlayer}
           onDayVote={castDayVote}
         />
       )}
@@ -424,7 +480,7 @@ export default function App() {
         />
       )}
 
-      {showMuteToggle && <MuteToggle />}
+      <MuteToggle />
       <Toaster />
     </div>
   );

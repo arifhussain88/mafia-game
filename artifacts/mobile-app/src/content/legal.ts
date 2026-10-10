@@ -178,7 +178,9 @@ const termsSections: LegalSection[] = [
     ],
   },
   {
-    paragraphs: ['There is no player chat inside the current game. If you talk to other players outside the app, you do that on your own.'],
+    paragraphs: [
+      'Day phases include in-game chat. You may report messages and block players from your own view. Keep chat respectful. Repeated abuse can lead to account action. If you talk to other players outside the app, you do that on your own.',
+    ],
   },
   {
     heading: 'Other players',

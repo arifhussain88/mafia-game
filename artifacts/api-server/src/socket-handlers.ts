@@ -1,5 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { logger } from "./lib/logger";
+import { getUserForToken } from "./lib/user-store";
+
 
 const TIMERS = {
   MATCH_COUNTDOWN: 5000,
@@ -17,6 +19,14 @@ const TYPEWRITER_LINE_PAUSE = 900;
 const NIGHT_SUMMARY_EXTRA_PAUSE = 3000;
 
 const MIN_PLAYERS = 3;
+const MAX_PLAYERS_PER_ROOM = 12;
+const MAX_OPEN_ROOMS = 20;
+const MAX_SOCKETS_PER_IP = 8;
+const CHAT_COOLDOWN_MS = 1500;
+const EMPTY_LOBBY_TTL_MS = 5 * 60 * 1000;
+const ROOM_GC_INTERVAL_MS = 60 * 1000;
+
+const socketsByIp = new Map<string, Set<string>>();
 
 type Role = "mafia" | "civilian" | "doctor" | "detective";
 type Phase =
@@ -62,6 +72,7 @@ interface Room {
   chatReports: ChatMessage[];
   chatSeq: number;
   lastChatAt: Map<string, number>;
+  emptySince?: number;
 }
 
 const rooms = new Map<string, Room>();
@@ -554,13 +565,88 @@ function handleMidGameDisconnect(socketId: string, room: Room, io: Server, code:
   }
 }
 
+function socketClientIp(socket: Socket) {
+  const forwarded = socket.handshake.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.length > 0) return forwarded.split(",")[0].trim();
+  if (Array.isArray(forwarded) && forwarded[0]) return String(forwarded[0]).split(",")[0].trim();
+  return socket.handshake.address || "unknown";
+}
+
+function trackSocketIp(socket: Socket) {
+  const ip = socketClientIp(socket);
+  socket.data.clientIp = ip;
+  let set = socketsByIp.get(ip);
+  if (!set) {
+    set = new Set();
+    socketsByIp.set(ip, set);
+  }
+  set.add(socket.id);
+}
+
+function untrackSocketIp(socket: Socket) {
+  const ip = String(socket.data.clientIp ?? socketClientIp(socket));
+  const set = socketsByIp.get(ip);
+  if (!set) return;
+  set.delete(socket.id);
+  if (set.size === 0) socketsByIp.delete(ip);
+}
+
+function destroyRoom(code: string, room: Room) {
+  clearRoomTimer(room);
+  rooms.delete(code);
+  logger.info({ code }, "Room destroyed");
+}
+
+function sweepEmptyRooms() {
+  const now = Date.now();
+  for (const [code, room] of rooms.entries()) {
+    const connected = Array.from(room.players.values()).some((p) => p.connected);
+    if (connected) {
+      room.emptySince = undefined;
+      continue;
+    }
+    if (room.emptySince == null) room.emptySince = now;
+    if (now - room.emptySince >= EMPTY_LOBBY_TTL_MS) {
+      destroyRoom(code, room);
+    }
+  }
+}
+
 export function registerSocketHandlers(io: Server) {
+  setInterval(sweepEmptyRooms, ROOM_GC_INTERVAL_MS);
+
+  io.use((socket, next) => {
+    const token = (socket.handshake.auth as { token?: string } | undefined)?.token
+      ?? (typeof socket.handshake.headers.authorization === "string"
+        ? socket.handshake.headers.authorization.replace(/^Bearer\s+/i, "")
+        : undefined);
+    const user = getUserForToken(token);
+    if (!user) {
+      next(new Error("Unauthorized"));
+      return;
+    }
+    const ip = socketClientIp(socket);
+    const existing = socketsByIp.get(ip);
+    if (existing && existing.size >= MAX_SOCKETS_PER_IP) {
+      next(new Error("Too many connections from this network"));
+      return;
+    }
+    socket.data.userId = user.id;
+    socket.data.userName = user.name;
+    next();
+  });
+
   io.on("connection", (socket: Socket) => {
-    logger.info({ socketId: socket.id }, "Socket connected");
+    trackSocketIp(socket);
+    logger.info({ socketId: socket.id, userId: socket.data.userId, ip: socket.data.clientIp }, "Socket connected");
 
     socket.on("create-room", (data: { name: string }) => {
-      const name = (data?.name ?? "").trim();
+      const name = (data?.name ?? "").trim() || String(socket.data.userName ?? "").trim();
       if (!name) { socket.emit("room-error", { message: "Display name is required" }); return; }
+      if (rooms.size >= MAX_OPEN_ROOMS) {
+        socket.emit("room-error", { message: "Too many rooms open right now. Try again later." });
+        return;
+      }
 
       let code = generateCode();
       while (rooms.has(code)) code = generateCode();
@@ -590,13 +676,14 @@ export function registerSocketHandlers(io: Server) {
 
     socket.on("join-room", (data: { code: string; name: string }) => {
       const code = (data?.code ?? "").trim().toUpperCase();
-      const name = (data?.name ?? "").trim();
+      const name = (data?.name ?? "").trim() || String(socket.data.userName ?? "").trim();
 
       if (!code) { socket.emit("room-error", { message: "Room code is required" }); return; }
       if (!name) { socket.emit("room-error", { message: "Display name is required" }); return; }
 
       const room = rooms.get(code);
       if (!room) { socket.emit("room-error", { message: "Room not found. Check your code." }); return; }
+      room.emptySince = undefined;
 
       if (room.phase !== "lobby") {
         const disconnected = Array.from(room.players.values()).find(
@@ -642,6 +729,10 @@ export function registerSocketHandlers(io: Server) {
         (p) => p.name.toLowerCase() === name.toLowerCase(),
       );
       if (nameTaken) { socket.emit("room-error", { message: "That name is already taken in this room." }); return; }
+      if (room.players.size >= MAX_PLAYERS_PER_ROOM) {
+        socket.emit("room-error", { message: "This room is full." });
+        return;
+      }
 
       const player: Player = { id: socket.id, name, isHost: false, alive: true, connected: true, role: null };
       room.players.set(socket.id, player);
@@ -740,7 +831,7 @@ export function registerSocketHandlers(io: Server) {
         }
         const now = Date.now();
         const lastAt = room.lastChatAt.get(player.id) ?? 0;
-        if (now - lastAt < 1000) {
+        if (now - lastAt < CHAT_COOLDOWN_MS) {
           socket.emit("room-error", { message: "Wait a moment before sending again." });
           return;
         }
@@ -883,6 +974,7 @@ export function registerSocketHandlers(io: Server) {
     });
 
     socket.on("disconnect", () => {
+      untrackSocketIp(socket);
       for (const [code, room] of rooms.entries()) {
         if (!room.players.has(socket.id)) continue;
 
@@ -891,8 +983,9 @@ export function registerSocketHandlers(io: Server) {
           const wasHost = player.isHost;
           room.players.delete(socket.id);
 
-          if (room.players.size === 0) { rooms.delete(code); }
-          else {
+          if (room.players.size === 0) {
+            destroyRoom(code, room);
+          } else {
             if (wasHost) {
               const next = room.players.values().next().value!;
               next.isHost = true;
@@ -902,6 +995,8 @@ export function registerSocketHandlers(io: Server) {
           logger.info({ socketId: socket.id }, "Socket disconnected (lobby)");
         } else {
           handleMidGameDisconnect(socket.id, room, io, code);
+          const stillConnected = Array.from(room.players.values()).some((p) => p.connected);
+          if (!stillConnected) room.emptySince = Date.now();
           logger.info({ socketId: socket.id }, "Socket disconnected (mid-game)");
         }
         return;

@@ -5,6 +5,7 @@ type Props = {
 };
 
 export default function Atmosphere({ phase }: Props) {
+  const isHome = phase === "home";
   const isNightPhase =
     phase === "night-mafia" ||
     phase === "night-doctor" ||
@@ -22,8 +23,8 @@ export default function Atmosphere({ phase }: Props) {
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",
-          opacity: 0.55,
-          filter: "grayscale(10%) brightness(65%)",
+          opacity: isHome ? 0.72 : 0.55,
+          filter: isHome ? "grayscale(6%) brightness(78%)" : "grayscale(10%) brightness(65%)",
         }}
       />
 
@@ -36,8 +37,8 @@ export default function Atmosphere({ phase }: Props) {
             backgroundSize: "contain",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
-            opacity: 0.38,
-            filter: "grayscale(10%) brightness(70%)",
+            opacity: isHome ? 0.55 : 0.38,
+            filter: isHome ? "grayscale(6%) brightness(82%)" : "grayscale(10%) brightness(70%)",
           }}
         />
       </div>
@@ -48,7 +49,9 @@ export default function Atmosphere({ phase }: Props) {
         style={{
           background: isNightPhase
             ? "linear-gradient(180deg, rgba(8,10,16,0.55) 0%, rgba(8,10,16,0.78) 45%, rgba(8,10,16,0.92) 100%)"
-            : "linear-gradient(180deg, rgba(8,10,16,0.45) 0%, rgba(8,10,16,0.72) 50%, rgba(8,10,16,0.9) 100%)",
+            : isHome
+              ? "linear-gradient(180deg, rgba(8,10,16,0.18) 0%, rgba(8,10,16,0.36) 48%, rgba(8,10,16,0.58) 100%)"
+              : "linear-gradient(180deg, rgba(8,10,16,0.45) 0%, rgba(8,10,16,0.72) 50%, rgba(8,10,16,0.9) 100%)",
         }}
       />
 

@@ -18,8 +18,11 @@ type Props = {
   detectiveResult: { targetName: string; isMafia: boolean } | null;
   chatMessages: { id: string; name: string; text: string }[];
   onSendChat: (text: string) => void;
+  onReportChat: (id: string) => void;
+  onBlockPlayer: (name: string) => void;
   onDayVote: (targetId: string) => void;
 };
+
 
 export default function DayPhase({
   subPhase,
@@ -34,6 +37,8 @@ export default function DayPhase({
   detectiveResult,
   chatMessages,
   onSendChat,
+  onReportChat,
+  onBlockPlayer,
   onDayVote,
 }: Props) {
   const countdown = useCountdown(timerEndsAt);
@@ -151,10 +156,30 @@ export default function DayPhase({
             <p className="text-gray-600 text-xs">No messages yet.</p>
           ) : (
             chatMessages.map((message) => (
-              <p key={message.id} className="text-sm text-gray-200 break-words">
-                <span className="font-semibold text-amber-200">{message.name}: </span>
-                {message.text}
-              </p>
+              <div key={message.id} className="flex items-start justify-between gap-2">
+                <p className="text-sm text-gray-200 break-words min-w-0">
+                  <span className="font-semibold text-amber-200">{message.name}: </span>
+                  {message.text}
+                </p>
+                {message.name !== me?.name && (
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onReportChat(message.id)}
+                      className="text-[10px] uppercase tracking-wide text-amber-700/80 hover:text-amber-500 cursor-pointer"
+                    >
+                      Report
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onBlockPlayer(message.name)}
+                      className="text-[10px] uppercase tracking-wide text-gray-500 hover:text-red-400 cursor-pointer"
+                    >
+                      Block
+                    </button>
+                  </div>
+                )}
+              </div>
             ))
           )}
         </div>

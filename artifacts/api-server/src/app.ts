@@ -1,11 +1,22 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import path from "node:path";
+import fs from "node:fs";
 import pinoHttp from "pino-http";
 import authRouter from "./routes/auth";
 import healthRouter from "./routes/health";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+
+const corsOrigin = process.env.CORS_ORIGIN;
+app.use(
+  cors(
+    corsOrigin
+      ? { origin: corsOrigin, credentials: true }
+      : undefined,
+  ),
+);
 
 app.use(
   pinoHttp({
@@ -26,12 +37,10 @@ app.use(
     },
   }),
 );
-app.use(cors());
-// capture raw body for debugging JSON parse issues
+
 app.use(express.json({ verify: (req: any, _res, buf: Buffer) => { try { req.rawBody = buf && buf.toString(); } catch {} } }));
 app.use(express.urlencoded({ extended: true }));
 
-// Repair malformed JSON from rawBody (if body-parser failed) before routing
 app.use((req: any, _res, next) => {
   try {
     const ct = String(req.headers["content-type"] || "").toLowerCase();
@@ -44,7 +53,6 @@ app.use((req: any, _res, next) => {
           req.body = JSON.parse(raw);
           return next();
         } catch (_) {
-          // attempt tolerant repair: quote keys and unquoted string values
           try {
             if (raw.startsWith("{") && raw.endsWith("}")) {
               let s = raw;
@@ -69,39 +77,37 @@ app.use((req: any, _res, next) => {
 app.use("/api/auth", authRouter);
 app.use("/api", healthRouter);
 
-// Debug: list registered routes for /api (inspect authRouter and healthRouter)
-try {
-  const routes: string[] = [];
-  [authRouter, healthRouter].forEach((r: any) => {
-    r?.stack?.forEach((layer: any) => {
-      if (layer.route) {
-        const path = layer.route?.path;
-        const methods = Object.keys(layer.route.methods).join(",").toUpperCase();
-        routes.push(`${methods} ${path}`);
-      } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
-        layer.handle.stack.forEach((l: any) => {
-          if (l.route) {
-            const path = l.route?.path;
-            const methods = Object.keys(l.route.methods).join(",").toUpperCase();
-            routes.push(`${methods} ${path}`);
-          }
-        });
-      }
-    });
-  });
-  try { logger.info({ routes }, 'Registered /api routes (direct)'); } catch {}
-} catch (e) { try { logger.warn({ err: String(e) }, 'Failed to list routes (direct)'); } catch {} }
-
-// JSON parse / syntax error handler (returns JSON instead of HTML) — logs and returns 400
 app.use((err: any, req: any, res: any, next: any) => {
   if (!err) return next();
-  const isBodyParser = err && (err.type === "entity.parse.failed" || err instanceof SyntaxError || err.name === 'SyntaxError');
+  const isBodyParser = err && (err.type === "entity.parse.failed" || err instanceof SyntaxError || err.name === "SyntaxError");
   if (isBodyParser) {
     try { logger.warn({ rawBody: req.rawBody, err: String(err?.message ?? err) }, "Invalid JSON payload received"); } catch {}
-      try { logger.warn({ rawBody: req.rawBody }, "Request rejected before route handling"); } catch {}
     return res.status(400).json({ message: "Invalid JSON payload" });
   }
   return next(err);
 });
+
+function resolveStaticDir() {
+  if (process.env.STATIC_DIR) return process.env.STATIC_DIR;
+  const candidates = [
+    path.resolve(import.meta.dirname, "public"),
+    path.resolve(import.meta.dirname, "..", "public"),
+    path.resolve(import.meta.dirname, "..", "..", "game-lobby", "dist", "public"),
+  ];
+  return candidates.find((dir) => fs.existsSync(dir)) ?? null;
+}
+
+const staticDir = resolveStaticDir();
+if (staticDir) {
+  logger.info({ staticDir }, "Serving static frontend");
+  app.use(express.static(staticDir, { index: false }));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    if (req.path.startsWith("/api") || req.path.startsWith("/socket.io")) return next();
+    const indexHtml = path.join(staticDir, "index.html");
+    if (fs.existsSync(indexHtml)) return res.sendFile(indexHtml);
+    return next();
+  });
+}
 
 export default app;

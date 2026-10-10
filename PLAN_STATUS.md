@@ -4,9 +4,12 @@ Build the current plan, then the next one. Do not start a later plan early.
 
 ## Now
 
-- [ ] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md) — continue tomorrow
-  - You first: [fly.io sign-up](https://fly.io/app/sign-up) + `fly auth login`, then say “Fly login done — deploy”
-  - Agent: code harden + one Fly app (`*.fly.dev`, region `sin`, no domain) + live checks
+- [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — opening screen should hit like the game: suspense, a mafia night, amber and black. Music already starts on that first screen (after the first tap). Title, tagline, and the photo behind the card are still to do.
+- [x] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md) — live at https://mafia-wars.fly.dev/
+  - Fly Machines app `mafia-wars`, region `sin`, volume `/data`
+  - Hardened: bcrypt, socket auth, static SPA, Report/Block, terms chat copy, reconnect toasts
+  - Cost floor: 1×256MB, auto-stop (min 0), no HA, app abuse caps; worst-case always-on ~$3–5/mo compute
+  - True $0 after a test wave: `fly apps destroy mafia-wars` then confirm volume gone (`fly volumes destroy` if needed); redeploy later with `fly deploy --ha=false` + new volume
 
 ## Deferred (after live)
 

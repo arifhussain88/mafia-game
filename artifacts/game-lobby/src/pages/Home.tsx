@@ -6,7 +6,9 @@ type Props = {
   onCreateRoom: (name: string) => void;
   onJoinRoom: (code: string, name: string) => void;
   onAuthenticated: () => void;
+  onLogout?: () => void;
 };
+
 
 type View = "main" | "create" | "join";
 
@@ -22,7 +24,7 @@ const ghostBtn =
 const secondaryBtn =
   "w-full min-h-[52px] rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-white text-lg font-semibold transition-colors";
 
-export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Props) {
+export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogout }: Props) {
   const [view, setView] = useState<View>("main");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -127,10 +129,25 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
     }
   }
 
-  function handleLogout() {
-    localStorage.removeItem("mafia-token");
-    localStorage.removeItem("mafia-user");
+  async function handleLogout() {
+    let token: string | null = null;
+    try { token = localStorage.getItem("mafia-token"); } catch { token = null; }
+    if (token) {
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        // ignore network errors on logout
+      }
+    }
+    try {
+      localStorage.removeItem("mafia-token");
+      localStorage.removeItem("mafia-user");
+    } catch {}
     setUser(null);
+    onLogout?.();
   }
 
   async function handleTestLogin(email: string) {
@@ -171,12 +188,14 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated }: Prop
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
         {view === "main" && authMode === "idle" && (
-          <div className="game-panel px-5 py-6">
+          <div className="game-panel bg-black/45! ring-1 ring-white/10 shadow-xl shadow-black/40 px-5 py-6">
             <div className="text-center mb-6">
-              <h1 className="font-display text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-rose-300 to-red-500 mb-2">
-                Mafia Wars
+              <h1 className="font-display text-5xl font-bold tracking-tight mb-2 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
+                <span className="bg-gradient-to-b from-amber-200 to-amber-600 bg-clip-text text-transparent">
+                  Mafia Wars
+                </span>
               </h1>
-              <p className="text-amber-200/80 text-sm italic mb-4">The Town has a problem</p>
+              <p className="text-amber-200/70 text-xs uppercase tracking-[0.22em] mb-4">The Town has a problem</p>
 
               {user ? (
                 <div className="text-sm text-gray-300">
