@@ -2,9 +2,15 @@
 
 Build the current plan, then the next one. Do not start a later plan early.
 
+## Production branch
+
+- **Live / production branch:** `feature/done-live` (treat like production; currently checked out)
+- Do feature work on other branches. When you say a piece of work is **done**, merge that branch into `feature/done-live`.
+- **Fly deploys only from `feature/done-live`.** Do not deploy from feature or experiment branches unless you explicitly say otherwise.
+
 ## Now
 
-- [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — opening screen should hit like the game: suspense, a mafia night, amber and black. Music already starts on that first screen (after the first tap). Title, tagline, and the photo behind the card are still to do.
+- [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — home polish done; remaining: host phase timers, more 3D role cards, detective hit flips the Mafia card (miss stays text-only)
 - [x] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md) — live at https://mafia-wars.fly.dev/
   - Fly Machines app `mafia-wars`, region `sin`, volume `/data`
   - Hardened: bcrypt, socket auth, static SPA, Report/Block, terms chat copy, reconnect toasts
@@ -28,6 +34,7 @@ Build the current plan, then the next one. Do not start a later plan early.
 
 ## Done
 
+- [x] [Splash screen impact](file:///C:/Users/ArifH/.cursor/plans/splash_screen_impact_af94db86.plan.md) — archived; home polish folded into Finalizing UI (not a separate track)
 - [x] [Play readiness review](file:///C:/Users/ArifH/.cursor/plans/play_readiness_review_c312286b.plan.md). Store review. First privacy and terms drafts are in.
 - [x] [Global legal documents](file:///C:/Users/ArifH/.cursor/plans/global_legal_documents_55d149fa.plan.md). Worldwide privacy and terms, linked before signup. Committed and pushed.
 - [x] [Play Store must-haves](file:///C:/Users/ArifH/.cursor/plans/play_store_must-haves_1cdab4a4.plan.md). Four dev-only test logins, fixed roles, day chat with report and block. Committed and pushed.
