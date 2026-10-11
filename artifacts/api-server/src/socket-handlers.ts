@@ -13,9 +13,10 @@ const TIMERS = {
   DAY_RESULT: 5000,
 };
 
-// Must match NightSummary.tsx animation constants
-const TYPEWRITER_CHAR_DELAY = 38;
-const TYPEWRITER_LINE_PAUSE = 900;
+// Must match NightSummary.tsx animation constants (include START_DELAY_MS there)
+const TYPEWRITER_CHAR_DELAY = 42;
+const TYPEWRITER_LINE_PAUSE = 1000;
+const TYPEWRITER_START_DELAY = 280;
 const NIGHT_SUMMARY_EXTRA_PAUSE = 3000;
 
 const MIN_PLAYERS = 3;
@@ -206,9 +207,12 @@ function buildNightSummaryLines(
 
 /** Compute how long the frontend typewriter will take to render all lines. */
 function computeTypewriterDuration(lines: string[]): number {
-  return lines.reduce(
-    (total, line) => total + line.length * TYPEWRITER_CHAR_DELAY + TYPEWRITER_LINE_PAUSE,
-    0,
+  return (
+    TYPEWRITER_START_DELAY +
+    lines.reduce(
+      (total, line) => total + line.length * TYPEWRITER_CHAR_DELAY + TYPEWRITER_LINE_PAUSE,
+      0,
+    )
   );
 }
 

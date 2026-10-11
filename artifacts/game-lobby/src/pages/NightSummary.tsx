@@ -1,49 +1,91 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { playSwordSlash, playTypewriterTick } from "@/lib/audio";
 
 type Props = {
   lines: string[];
+  /** Play the kill sting when the death line finishes typing. */
+  killSound?: boolean;
 };
 
-const CHAR_DELAY_MS = 38;
-const LINE_PAUSE_MS = 900;
+/** Keep in sync with api-server TYPEWRITER_* constants. */
+const CHAR_DELAY_MS = 42;
+const LINE_PAUSE_MS = 1000;
+const START_DELAY_MS = 280;
 
-export default function NightSummary({ lines }: Props) {
+export default function NightSummary({ lines, killSound = false }: Props) {
   const [completedLines, setCompletedLines] = useState<string[]>([]);
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
   const [allDone, setAllDone] = useState(false);
+  const killPlayedRef = useRef(false);
 
   useEffect(() => {
     setCompletedLines([]);
     setCurrentLineIndex(0);
     setCurrentCharIndex(0);
     setAllDone(false);
-  }, [lines]);
+    killPlayedRef.current = false;
 
-  useEffect(() => {
     if (lines.length === 0) return;
 
-    if (currentLineIndex >= lines.length) {
-      setAllDone(true);
-      return;
+    let cancelled = false;
+    let lineIdx = 0;
+    let charIdx = 0;
+    const done: string[] = [];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    function schedule(ms: number, fn: () => void) {
+      timer = setTimeout(() => {
+        if (!cancelled) fn();
+      }, ms);
     }
 
-    const line = lines[currentLineIndex];
+    function step() {
+      if (cancelled) return;
 
-    if (currentCharIndex < line.length) {
-      const t = setTimeout(() => {
-        setCurrentCharIndex((c) => c + 1);
-      }, CHAR_DELAY_MS);
-      return () => clearTimeout(t);
-    } else {
-      const t = setTimeout(() => {
-        setCompletedLines((prev) => [...prev, line]);
-        setCurrentLineIndex((i) => i + 1);
-        setCurrentCharIndex(0);
-      }, LINE_PAUSE_MS);
-      return () => clearTimeout(t);
+      if (lineIdx >= lines.length) {
+        setAllDone(true);
+        return;
+      }
+
+      const line = lines[lineIdx];
+
+      if (charIdx < line.length) {
+        const next = charIdx + 1;
+        const ch = line[charIdx];
+        charIdx = next;
+        setCurrentLineIndex(lineIdx);
+        setCurrentCharIndex(next);
+        // Click only for visible glyphs so silence matches blank gaps
+        if (ch && !/\s/.test(ch)) playTypewriterTick();
+        schedule(CHAR_DELAY_MS, step);
+        return;
+      }
+
+      done.push(line);
+      setCompletedLines([...done]);
+      if (
+        killSound &&
+        !killPlayedRef.current &&
+        /\bdead\b/i.test(line)
+      ) {
+        killPlayedRef.current = true;
+        playSwordSlash();
+      }
+      lineIdx += 1;
+      charIdx = 0;
+      setCurrentLineIndex(lineIdx);
+      setCurrentCharIndex(0);
+      schedule(LINE_PAUSE_MS, step);
     }
-  }, [lines, currentLineIndex, currentCharIndex]);
+
+    schedule(START_DELAY_MS, step);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [lines, killSound]);
 
   const activePartial =
     currentLineIndex < lines.length
@@ -55,24 +97,22 @@ export default function NightSummary({ lines }: Props) {
       <div className="game-panel w-full max-w-md md:max-w-xl px-6 py-8 flex flex-col gap-8">
 
         <div className="text-center">
-          <p className="font-display text-amber-200/70 text-xs md:text-sm uppercase tracking-[0.2em] font-medium">
+          <p className="font-display text-amber-100/55 text-xs md:text-sm uppercase tracking-[0.35em] font-medium">
             Night Report
           </p>
         </div>
 
-        {/* Horizontal rule */}
         <div
           className="w-full h-px"
-          style={{ background: "linear-gradient(to right, transparent, #c8a04a44, transparent)" }}
+          style={{ background: "linear-gradient(to right, transparent, rgba(212,175,95,0.35), transparent)" }}
         />
 
-        {/* Typewriter lines */}
-        <div className="flex flex-col gap-5 min-h-[120px] md:min-h-[160px]">
+        <div className="flex flex-col gap-6 min-h-[120px] md:min-h-[160px]">
           {completedLines.map((line, i) => (
             <p
               key={i}
-              className="text-amber-200/80 text-base md:text-lg leading-relaxed font-medium"
-              style={{ textShadow: "0 0 20px rgba(200,160,74,0.2)" }}
+              className="font-display text-amber-100/55 text-[1.05rem] md:text-xl leading-snug tracking-wide"
+              style={{ textShadow: "0 2px 18px rgba(0,0,0,0.55)" }}
             >
               {line}
             </p>
@@ -80,37 +120,38 @@ export default function NightSummary({ lines }: Props) {
 
           {activePartial !== null && (
             <p
-              className="text-amber-200/80 text-base md:text-lg leading-relaxed font-medium"
-              style={{ textShadow: "0 0 20px rgba(200,160,74,0.2)" }}
+              className="font-display text-amber-50/95 text-[1.05rem] md:text-xl leading-snug tracking-wide"
+              style={{ textShadow: "0 0 24px rgba(212,175,95,0.22), 0 2px 14px rgba(0,0,0,0.5)" }}
             >
               {activePartial}
               <span
-                className="inline-block w-[2px] h-[1.1em] ml-[1px] align-middle animate-pulse"
-                style={{ background: "#c8a04a", opacity: 0.8 }}
+                className="inline-block w-[2px] h-[1.05em] ml-[2px] align-[-0.12em]"
+                style={{
+                  background: "linear-gradient(180deg, #f5e6c0, #c8a04a)",
+                  boxShadow: "0 0 8px rgba(200,160,74,0.55)",
+                  animation: "nightCaret 0.9s steps(1) infinite",
+                }}
               />
             </p>
           )}
         </div>
 
-        {/* After all lines finish: "Day begins soon…" */}
         {allDone && (
           <div
             className="flex flex-col items-center gap-4 mt-2"
-            style={{
-              animation: "fadeIn 0.6s ease forwards",
-            }}
+            style={{ animation: "fadeIn 0.6s ease forwards" }}
           >
             <div
               className="w-full h-px"
-              style={{ background: "linear-gradient(to right, transparent, #c8a04a44, transparent)" }}
+              style={{ background: "linear-gradient(to right, transparent, rgba(212,175,95,0.28), transparent)" }}
             />
             <div className="flex items-center gap-3 mt-2">
               <span
                 className="w-1.5 h-1.5 rounded-full animate-pulse"
                 style={{ background: "#c8a04a" }}
               />
-              <p className="text-amber-700/70 text-sm md:text-base font-medium tracking-wide">
-                Day begins soon…
+              <p className="font-display text-amber-200/45 text-sm md:text-base tracking-[0.18em] uppercase">
+                Day begins soon
               </p>
               <span
                 className="w-1.5 h-1.5 rounded-full animate-pulse"
@@ -126,6 +167,15 @@ export default function NightSummary({ lines }: Props) {
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes nightCaret {
+          0%, 49% { opacity: 0.9; }
+          50%, 100% { opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          @keyframes nightCaret {
+            0%, 100% { opacity: 0.7; }
+          }
         }
       `}</style>
     </div>

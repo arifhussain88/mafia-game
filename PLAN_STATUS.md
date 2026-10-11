@@ -11,6 +11,14 @@ Build the current plan, then the next one. Do not start a later plan early.
   - Cost floor: 1×256MB, auto-stop (min 0), no HA, app abuse caps; worst-case always-on ~$3–5/mo compute
   - True $0 after a test wave: `fly apps destroy mafia-wars` then confirm volume gone (`fly volumes destroy` if needed); redeploy later with `fly deploy --ha=false` + new volume
 
+## Next (separate)
+
+- [ ] [Neon Free safe migrate](file:///C:/Users/ArifH/.cursor/plans/neon_free_safe_migrate_2400676a.plan.md) — Neon Postgres + Drizzle for accounts, profiles, match history, and chat; JSON fallback so live games do not break
+  - Org is already on Neon Free ($0). Do **not** delete or change existing projects (`northline-revamp`, `northlinestore`)
+  - New project only: `mafia-wars`. Free stays $0 under ~1 GB/project, 100 CU-hours/month, 5 GB egress — **not** until 1M users
+  - Live rooms stay in memory; durable writes are signup/session, match end, and day chat
+  - Do not set Fly `DATABASE_URL` until local verify; no deploy until you say so
+
 ## Deferred (after live)
 
 - [ ] [Google ads revenue](file:///C:/Users/ArifH/.cursor/plans/google_ads_revenue_628e3cc9.plan.md)

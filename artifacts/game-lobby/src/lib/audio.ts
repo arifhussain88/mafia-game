@@ -141,6 +141,45 @@ export function playCountdownTick(): void {
   });
 }
 
+/** Soft typewriter key — keep short so it can fire once per revealed character. */
+export function playTypewriterTick(): void {
+  withAudio((ctx, now, level) => {
+    const amp = 0.09 * level;
+    const noiseLen = Math.max(1, Math.floor(ctx.sampleRate * 0.018));
+    const buffer = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < noiseLen; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / noiseLen);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.setValueAtTime(1800, now);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, now);
+    env.gain.exponentialRampToValueAtTime(amp, now + 0.002);
+    env.gain.exponentialRampToValueAtTime(0.0001, now + 0.028);
+    noise.connect(filter);
+    filter.connect(env);
+    env.connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + 0.032);
+
+    const thock = ctx.createOscillator();
+    const thockEnv = ctx.createGain();
+    thock.type = "triangle";
+    thock.frequency.setValueAtTime(220 + Math.random() * 40, now);
+    thockEnv.gain.setValueAtTime(0.0001, now);
+    thockEnv.gain.exponentialRampToValueAtTime(0.05 * level, now + 0.001);
+    thockEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+    thock.connect(thockEnv);
+    thockEnv.connect(ctx.destination);
+    thock.start(now);
+    thock.stop(now + 0.045);
+  });
+}
+
 /** Royalty-free: synthesized metallic whoosh + hit. No third-party audio asset. */
 export function playSwordSlash(): void {
   withAudio((ctx, now, level) => {
