@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { Role } from "@/App";
 import CardFront from "@/components/cards/CardFront";
 import CardBack from "@/components/cards/CardBack";
@@ -11,20 +12,42 @@ type Props = {
 
 export default function RoleCard({ role, flipped, width, animate = false }: Props) {
   const height = Math.round(width * (168 / 120));
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => setReduceMotion(mq.matches);
+    apply();
+    mq.addEventListener?.("change", apply);
+    return () => mq.removeEventListener?.("change", apply);
+  }, []);
+
+  const showTilt = !reduceMotion && !animate;
 
   return (
-    <div style={{ perspective: "600px", width, height, flexShrink: 0 }}>
+    <div
+      style={{
+        perspective: reduceMotion ? "none" : "900px",
+        width,
+        height,
+        flexShrink: 0,
+        transform: showTilt ? "rotateX(6deg) rotateY(-5deg)" : undefined,
+        transformStyle: "preserve-3d",
+      }}
+    >
       <div
         style={{
           position: "relative",
           width: "100%",
           height: "100%",
           transformStyle: "preserve-3d",
-          transition: animate ? "transform 0.75s cubic-bezier(0.4, 0, 0.2, 1)" : "none",
+          transition: animate && !reduceMotion
+            ? "transform 0.85s cubic-bezier(0.34, 1.2, 0.64, 1)"
+            : "none",
           transform: flipped ? "rotateY(0deg)" : "rotateY(180deg)",
         }}
       >
-        {/* Front face */}
         <div
           style={{
             position: "absolute",
@@ -40,7 +63,6 @@ export default function RoleCard({ role, flipped, width, animate = false }: Prop
           )}
         </div>
 
-        {/* Back face */}
         <div
           style={{
             position: "absolute",

@@ -10,7 +10,7 @@ Build the current plan, then the next one. Do not start a later plan early.
 
 ## Now
 
-- [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — home polish done; remaining: host phase timers, more 3D role cards, detective hit flips the Mafia card (miss stays text-only)
+- [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — implemented locally (host timers, 3D cards, detective Mafia flip). Mark done and merge into `feature/done-live` when you say so; Fly deploy only from that branch
 - [x] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md) — live at https://mafia-wars.fly.dev/
   - Fly Machines app `mafia-wars`, region `sin`, volume `/data`
   - Hardened: bcrypt, socket auth, static SPA, Report/Block, terms chat copy, reconnect toasts

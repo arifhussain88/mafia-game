@@ -6,12 +6,74 @@ import { getUserForToken } from "./lib/user-store";
 const TIMERS = {
   MATCH_COUNTDOWN: 5000,
   ROLE_REVEAL: 6000,
-  NIGHT_STEP: 30000,
+  NIGHT_STEP: 60000,
   NIGHT_EARLY_ADVANCE: 2000,
+  /** Extra beat after detective flip so the card animation can finish. */
+  DETECTIVE_REVEAL_PAUSE: 2800,
   DAY_DISCUSSION: 60000,
   DAY_VOTE: 30000,
   DAY_RESULT: 5000,
 };
+
+/** Per-room host overrides (seconds). Applied to night step / day discussion / day vote. */
+type TimerSettings = {
+  nightStepSec: number;
+  dayDiscussionSec: number;
+  dayVoteSec: number;
+};
+
+const DEFAULT_TIMER_SETTINGS: TimerSettings = {
+  nightStepSec: 60,
+  dayDiscussionSec: 60,
+  dayVoteSec: 30,
+};
+
+const TIMER_CLAMPS = {
+  nightStepSec: { min: 15, max: 90 },
+  dayDiscussionSec: { min: 30, max: 180 },
+  dayVoteSec: { min: 15, max: 90 },
+} as const;
+
+function clampSec(value: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+function normalizeTimerSettings(raw: Partial<TimerSettings> | null | undefined): TimerSettings {
+  return {
+    nightStepSec: clampSec(
+      raw?.nightStepSec,
+      TIMER_CLAMPS.nightStepSec.min,
+      TIMER_CLAMPS.nightStepSec.max,
+      DEFAULT_TIMER_SETTINGS.nightStepSec,
+    ),
+    dayDiscussionSec: clampSec(
+      raw?.dayDiscussionSec,
+      TIMER_CLAMPS.dayDiscussionSec.min,
+      TIMER_CLAMPS.dayDiscussionSec.max,
+      DEFAULT_TIMER_SETTINGS.dayDiscussionSec,
+    ),
+    dayVoteSec: clampSec(
+      raw?.dayVoteSec,
+      TIMER_CLAMPS.dayVoteSec.min,
+      TIMER_CLAMPS.dayVoteSec.max,
+      DEFAULT_TIMER_SETTINGS.dayVoteSec,
+    ),
+  };
+}
+
+function nightStepMs(room: Room): number {
+  return room.timerSettings.nightStepSec * 1000;
+}
+
+function dayDiscussionMs(room: Room): number {
+  return room.timerSettings.dayDiscussionSec * 1000;
+}
+
+function dayVoteMs(room: Room): number {
+  return room.timerSettings.dayVoteSec * 1000;
+}
 
 // Must match NightSummary.tsx animation constants (include START_DELAY_MS there)
 const TYPEWRITER_CHAR_DELAY = 42;
@@ -74,6 +136,7 @@ interface Room {
   chatSeq: number;
   lastChatAt: Map<string, number>;
   emptySince?: number;
+  timerSettings: TimerSettings;
 }
 
 const rooms = new Map<string, Room>();
@@ -285,7 +348,7 @@ function startNightMafia(io: Server, code: string) {
   room.detectiveInvestigate = new Map();
 
   const connectedMafia = connectedLivingMafia(room);
-  const duration = connectedMafia.length > 0 ? TIMERS.NIGHT_STEP : Math.floor(Math.random() * 3000) + 5000;
+  const duration = connectedMafia.length > 0 ? nightStepMs(room) : Math.floor(Math.random() * 3000) + 5000;
 
   const endsAt = Date.now() + duration;
   room.timerEndsAt = endsAt;
@@ -309,7 +372,7 @@ function startNightDoctor(io: Server, code: string) {
   room.phase = "night-doctor";
 
   const doctor = Array.from(room.players.values()).find(p => p.role === "doctor" && p.alive && p.connected);
-  const duration = doctor ? TIMERS.NIGHT_STEP : Math.floor(Math.random() * 3000) + 5000;
+  const duration = doctor ? nightStepMs(room) : Math.floor(Math.random() * 3000) + 5000;
 
   const endsAt = Date.now() + duration;
   room.timerEndsAt = endsAt;
@@ -332,7 +395,7 @@ function startNightDetective(io: Server, code: string) {
   room.phase = "night-detective";
 
   const detective = Array.from(room.players.values()).find(p => p.role === "detective" && p.alive && p.connected);
-  const duration = detective ? TIMERS.NIGHT_STEP : Math.floor(Math.random() * 3000) + 5000;
+  const duration = detective ? nightStepMs(room) : Math.floor(Math.random() * 3000) + 5000;
 
   const endsAt = Date.now() + duration;
   room.timerEndsAt = endsAt;
@@ -429,7 +492,8 @@ function startDayDiscussion(io: Server, code: string) {
   clearRoomTimer(room);
   room.phase = "day-discussion";
 
-  const endsAt = Date.now() + TIMERS.DAY_DISCUSSION;
+  const discussionMs = dayDiscussionMs(room);
+  const endsAt = Date.now() + discussionMs;
   room.timerEndsAt = endsAt;
 
   const narration = room.pendingNarration;
@@ -442,7 +506,7 @@ function startDayDiscussion(io: Server, code: string) {
     narration,
   });
 
-  room.timer = setTimeout(() => startDayVote(io, code), TIMERS.DAY_DISCUSSION);
+  room.timer = setTimeout(() => startDayVote(io, code), discussionMs);
   logger.info({ code }, "Day discussion started");
 }
 
@@ -454,7 +518,8 @@ function startDayVote(io: Server, code: string) {
   room.phase = "day-vote";
   room.dayVotes = new Map();
 
-  const endsAt = Date.now() + TIMERS.DAY_VOTE;
+  const voteMs = dayVoteMs(room);
+  const endsAt = Date.now() + voteMs;
   room.timerEndsAt = endsAt;
 
   io.to(code).emit("game-phase", {
@@ -464,7 +529,7 @@ function startDayVote(io: Server, code: string) {
     votes: {},
   });
 
-  room.timer = setTimeout(() => resolveDay(io, code), TIMERS.DAY_VOTE);
+  room.timer = setTimeout(() => resolveDay(io, code), voteMs);
   logger.info({ code }, "Day vote started");
 }
 
@@ -670,11 +735,17 @@ export function registerSocketHandlers(io: Server) {
         chatReports: [],
         chatSeq: 0,
         lastChatAt: new Map(),
+        timerSettings: { ...DEFAULT_TIMER_SETTINGS },
       };
       rooms.set(code, room);
       socket.join(code);
 
-      socket.emit("room-created", { code, players: serializePlayers(room.players, false, socket.id), isHost: true });
+      socket.emit("room-created", {
+        code,
+        players: serializePlayers(room.players, false, socket.id),
+        isHost: true,
+        timerSettings: room.timerSettings,
+      });
       logger.info({ code, name }, "Room created");
     });
 
@@ -742,12 +813,35 @@ export function registerSocketHandlers(io: Server) {
       room.players.set(socket.id, player);
       socket.join(code);
 
-      socket.emit("room-joined", { code, players: serializePlayers(room.players, false, socket.id), isHost: false });
+      socket.emit("room-joined", {
+        code,
+        players: serializePlayers(room.players, false, socket.id),
+        isHost: false,
+        timerSettings: room.timerSettings,
+      });
       // Send players-updated individually to each player with their own viewerId
       for (const p of room.players.values()) {
         io.to(p.id).emit("players-updated", { players: serializePlayers(room.players, false, p.id) });
       }
       logger.info({ code, name }, "Player joined room");
+    });
+
+    socket.on("set-timer-settings", (data: Partial<TimerSettings>) => {
+      for (const [code, room] of rooms.entries()) {
+        const player = room.players.get(socket.id);
+        if (!player) continue;
+        if (!player.isHost || room.phase !== "lobby") {
+          socket.emit("room-error", { message: "Only the host can change timers in the lobby." });
+          return;
+        }
+        room.timerSettings = normalizeTimerSettings({
+          ...room.timerSettings,
+          ...data,
+        });
+        io.to(code).emit("timer-settings", { timerSettings: room.timerSettings });
+        logger.info({ code, timerSettings: room.timerSettings }, "Timer settings updated");
+        return;
+      }
     });
 
     socket.on("kick-player", (data: { targetId: string }) => {
@@ -811,6 +905,7 @@ export function registerSocketHandlers(io: Server) {
         for (const p of room.players.values()) {
           io.to(p.id).emit("room-reset", { players: serializePlayers(room.players, false, p.id) });
         }
+        io.to(code).emit("timer-settings", { timerSettings: room.timerSettings });
         logger.info({ code }, "Room reset for play again");
         return;
       }
@@ -945,9 +1040,9 @@ export function registerSocketHandlers(io: Server) {
         });
         logger.info({ detectiveId: socket.id, targetName: target.name, isMafia: target.role === "mafia" }, "Detective result sent");
 
-        // Advance to night resolution after 2s (time for detective to read result)
+        // Advance after the detective card flip / result can be read
         clearRoomTimer(room);
-        room.timer = setTimeout(() => resolveNight(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
+        room.timer = setTimeout(() => resolveNight(io, code), TIMERS.DETECTIVE_REVEAL_PAUSE);
         return;
       }
     });

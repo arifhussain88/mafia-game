@@ -4,6 +4,7 @@ import { useCountdown } from "@/hooks/useCountdown";
 import { useCircleSize } from "@/hooks/useCircleSize";
 import { playTimerAlert } from "@/lib/audio";
 import PlayerCircle, { type ActionMode } from "@/components/PlayerCircle";
+import RoleCard from "@/components/RoleCard";
 
 type NightStep = "night-mafia" | "night-doctor" | "night-detective";
 
@@ -84,6 +85,18 @@ export default function NightPhase({
     return () => clearTimeout(t);
   }, [phase]);
 
+  // Detective hit: start face-down, then flip to Mafia face
+  const [mafiaCardFlipped, setMafiaCardFlipped] = useState(false);
+  useEffect(() => {
+    if (!detectiveResult?.isMafia) {
+      setMafiaCardFlipped(false);
+      return;
+    }
+    setMafiaCardFlipped(false);
+    const t = setTimeout(() => setMafiaCardFlipped(true), 120);
+    return () => clearTimeout(t);
+  }, [detectiveResult]);
+
   const me = players.find((p) => p.id === mySocketId);
   const amAlive = me?.alive ?? false;
   const activeRole = STEP_ROLE[phase];
@@ -162,22 +175,34 @@ export default function NightPhase({
 
         {/* Status / detective inline result */}
         <div className="text-center min-h-[48px] flex flex-col items-center justify-center gap-1 w-full max-w-sm md:max-w-lg mt-3">
-          {myRole === "detective" && detectiveResult && (
+          {myRole === "detective" && detectiveResult && detectiveResult.isMafia && (
+            <div
+              className="rounded-xl border px-5 py-4 w-full flex flex-col items-center gap-3"
+              style={{
+                background: "rgba(127,0,0,0.18)",
+                borderColor: "#7f1d1d",
+              }}
+            >
+              <p className="text-xs md:text-sm text-gray-500 uppercase tracking-widest">Investigation result</p>
+              <RoleCard role="mafia" flipped={mafiaCardFlipped} width={120} animate />
+              <p className="text-base md:text-lg font-bold text-red-400 text-center">
+                {detectiveResult.targetName} is Mafia.
+              </p>
+              <p className="text-xs text-gray-600">Only you can see this. Day begins in a moment.</p>
+            </div>
+          )}
+
+          {myRole === "detective" && detectiveResult && !detectiveResult.isMafia && (
             <div
               className="rounded-xl border px-5 py-3 w-full"
               style={{
-                background: detectiveResult.isMafia ? "rgba(127,0,0,0.18)" : "rgba(0,60,30,0.18)",
-                borderColor: detectiveResult.isMafia ? "#7f1d1d" : "#134e2a",
+                background: "rgba(0,60,30,0.18)",
+                borderColor: "#134e2a",
               }}
             >
               <p className="text-xs md:text-sm text-gray-500 mb-1 uppercase tracking-widest">Investigation result</p>
-              <p
-                className="text-base md:text-lg font-bold"
-                style={{ color: detectiveResult.isMafia ? "#ef4444" : "#34d399" }}
-              >
-                {detectiveResult.isMafia
-                  ? `${detectiveResult.targetName} is Mafia.`
-                  : `${detectiveResult.targetName} is not Mafia.`}
+              <p className="text-base md:text-lg font-bold text-emerald-400">
+                {detectiveResult.targetName} is not Mafia.
               </p>
               <p className="text-xs text-gray-600 mt-1">Only you can see this. Day begins in a moment.</p>
             </div>

@@ -4,16 +4,96 @@ import HowToPlay from "@/components/HowToPlay";
 
 const MIN_PLAYERS = 3;
 
+export type TimerSettings = {
+  nightStepSec: number;
+  dayDiscussionSec: number;
+  dayVoteSec: number;
+};
+
+export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
+  nightStepSec: 60,
+  dayDiscussionSec: 60,
+  dayVoteSec: 30,
+};
+
+const TIMER_BOUNDS = {
+  nightStepSec: { min: 15, max: 90, step: 5, label: "Night turn" },
+  dayDiscussionSec: { min: 30, max: 180, step: 15, label: "Day discussion" },
+  dayVoteSec: { min: 15, max: 90, step: 5, label: "Day vote" },
+} as const;
+
+type TimerKey = keyof TimerSettings;
+
 type Props = {
   roomCode: string;
   players: Player[];
   isHost: boolean;
   mySocketId: string;
+  timerSettings: TimerSettings;
   onStartGame: () => void;
   onKickPlayer: (targetId: string) => void;
+  onTimerSettingsChange: (next: TimerSettings) => void;
 };
 
-export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGame, onKickPlayer }: Props) {
+function TimerRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  editable,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  editable: boolean;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 min-h-[44px]">
+      <span className="text-sm text-gray-400">{label}</span>
+      {editable ? (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={value <= min}
+            onClick={() => onChange(Math.max(min, value - step))}
+            className="w-9 h-9 rounded-lg border border-gray-700 text-amber-200 hover:bg-amber-950/40 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+            aria-label={`Decrease ${label}`}
+          >
+            −
+          </button>
+          <span className="w-14 text-center font-mono text-amber-100 tabular-nums">{value}s</span>
+          <button
+            type="button"
+            disabled={value >= max}
+            onClick={() => onChange(Math.min(max, value + step))}
+            className="w-9 h-9 rounded-lg border border-gray-700 text-amber-200 hover:bg-amber-950/40 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+            aria-label={`Increase ${label}`}
+          >
+            +
+          </button>
+        </div>
+      ) : (
+        <span className="font-mono text-sm text-gray-300 tabular-nums">{value}s</span>
+      )}
+    </div>
+  );
+}
+
+export default function Lobby({
+  roomCode,
+  players,
+  isHost,
+  mySocketId,
+  timerSettings,
+  onStartGame,
+  onKickPlayer,
+  onTimerSettingsChange,
+}: Props) {
   const [copied, setCopied] = useState(false);
   const [kickConfirm, setKickConfirm] = useState<string | null>(null);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
@@ -33,6 +113,10 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
       setKickConfirm(targetId);
       setTimeout(() => setKickConfirm(null), 3000);
     }
+  }
+
+  function bump(key: TimerKey, value: number) {
+    onTimerSettingsChange({ ...timerSettings, [key]: value });
   }
 
   const canStart = isHost && players.length >= MIN_PLAYERS;
@@ -98,6 +182,32 @@ export default function Lobby({ roomCode, players, isHost, mySocketId, onStartGa
                     </button>
                   )}
                 </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mb-6 rounded-xl border border-white/10 bg-black/30 px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Phase timers</h2>
+            {!isHost && (
+              <span className="text-[10px] uppercase tracking-wider text-gray-600">Host sets these</span>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            {(Object.keys(TIMER_BOUNDS) as TimerKey[]).map((key) => {
+              const bound = TIMER_BOUNDS[key];
+              return (
+                <TimerRow
+                  key={key}
+                  label={bound.label}
+                  value={timerSettings[key]}
+                  min={bound.min}
+                  max={bound.max}
+                  step={bound.step}
+                  editable={isHost}
+                  onChange={(v) => bump(key, v)}
+                />
               );
             })}
           </div>

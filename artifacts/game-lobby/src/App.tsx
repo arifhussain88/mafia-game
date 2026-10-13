@@ -3,7 +3,7 @@ import { io, Socket } from "socket.io-client";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import Home from "@/pages/Home";
-import Lobby from "@/pages/Lobby";
+import Lobby, { DEFAULT_TIMER_SETTINGS, type TimerSettings } from "@/pages/Lobby";
 import MatchCountdown from "@/pages/MatchCountdown";
 import RoleReveal from "@/pages/RoleReveal";
 import NightPhase from "@/pages/NightPhase";
@@ -54,6 +54,7 @@ export default function App() {
     try { return Boolean(localStorage.getItem("mafia-token")); } catch { return false; }
   });
   const [players, setPlayers] = useState<Player[]>([]);
+  const [timerSettings, setTimerSettings] = useState<TimerSettings>(DEFAULT_TIMER_SETTINGS);
 
   const [myRole, setMyRole] = useState<Role | null>(null);
   const [mafiaNames, setMafiaNames] = useState<string[]>([]);
@@ -199,18 +200,24 @@ export default function App() {
       toast({ title: "Disconnected", description: "Reconnecting…" });
     });
 
-    socket.on("room-created", (data: { code: string; players: Player[]; isHost: boolean }) => {
+    socket.on("room-created", (data: { code: string; players: Player[]; isHost: boolean; timerSettings?: TimerSettings }) => {
       setRoomCode(data.code);
       setPlayers(data.players);
       setIsHost(data.isHost);
+      if (data.timerSettings) setTimerSettings(data.timerSettings);
       setPhase("lobby");
     });
 
-    socket.on("room-joined", (data: { code: string; players: Player[]; isHost: boolean }) => {
+    socket.on("room-joined", (data: { code: string; players: Player[]; isHost: boolean; timerSettings?: TimerSettings }) => {
       setRoomCode(data.code);
       setPlayers(data.players);
       setIsHost(data.isHost);
+      if (data.timerSettings) setTimerSettings(data.timerSettings);
       setPhase("lobby");
+    });
+
+    socket.on("timer-settings", (data: { timerSettings: TimerSettings }) => {
+      setTimerSettings(data.timerSettings);
     });
 
     socket.on("players-updated", (data: { players: Player[] }) => {
@@ -349,6 +356,10 @@ export default function App() {
 
   const startGame           = useCallback(() => { socketRef.current?.emit("start-game"); }, []);
   const kickPlayer          = useCallback((id: string) => { socketRef.current?.emit("kick-player", { targetId: id }); }, []);
+  const updateTimerSettings = useCallback((next: TimerSettings) => {
+    setTimerSettings(next);
+    socketRef.current?.emit("set-timer-settings", next);
+  }, []);
   const castNightVote       = useCallback((id: string) => { setMyNightVote(id); socketRef.current?.emit("night-vote", { targetId: id }); }, []);
   const castDoctorProtect   = useCallback((id: string) => { socketRef.current?.emit("doctor-protect", { targetId: id }); }, []);
   const castDetectiveInvest = useCallback((id: string) => { socketRef.current?.emit("detective-investigate", { targetId: id }); }, []);
@@ -407,8 +418,10 @@ export default function App() {
           players={players}
           isHost={isHost}
           mySocketId={mySocketId}
+          timerSettings={timerSettings}
           onStartGame={startGame}
           onKickPlayer={kickPlayer}
+          onTimerSettingsChange={updateTimerSettings}
         />
       )}
 
