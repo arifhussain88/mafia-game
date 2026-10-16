@@ -549,14 +549,16 @@ function resolveDay(io: Server, code: string) {
   let eliminatedId: string | null = null;
   let skipped = false;
 
-  if (voteCounts.size === 0) {
-    skipped = true;
+  const majority = Math.floor(living(room).length / 2) + 1;
+  const maxVotes = voteCounts.size === 0 ? 0 : Math.max(...voteCounts.values());
+  const topTargets = Array.from(voteCounts.entries())
+    .filter(([, c]) => c === maxVotes)
+    .map(([id]) => id);
+
+  if (topTargets.length === 1 && maxVotes >= majority) {
+    eliminatedId = topTargets[0];
   } else {
-    const maxVotes = Math.max(...voteCounts.values());
-    const topTargets = Array.from(voteCounts.entries())
-      .filter(([, c]) => c === maxVotes)
-      .map(([id]) => id);
-    eliminatedId = topTargets[Math.floor(Math.random() * topTargets.length)];
+    skipped = true;
   }
 
   let eliminatedName: string | null = null;
@@ -982,7 +984,11 @@ export function registerSocketHandlers(io: Server) {
         const target = room.players.get(data.targetId);
         if (!target || !target.alive || target.role === "mafia") return;
 
+        const previous = room.nightVotes.get(socket.id);
         room.nightVotes.set(socket.id, data.targetId);
+        if (previous !== data.targetId) {
+          io.to(code).emit("mafia-kill-sound");
+        }
         broadcastNightVoteStatus(io, code);
 
         // Advance early when all connected mafia have voted — 2s pause before next step

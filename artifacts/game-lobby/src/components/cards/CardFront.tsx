@@ -22,11 +22,23 @@ const ROLE_GLOW: Record<Role, string> = {
 };
 
 const ROLE_IMG: Record<Role, string> = {
-  mafia:     "/role-mafia.png",
-  doctor:    "/role-doctor.png",
-  detective: "/role-detective.png",
-  civilian:  "/role-civilian.png",
+  mafia:     `${import.meta.env.BASE_URL}roles/mafia.webp`,
+  doctor:    `${import.meta.env.BASE_URL}roles/doctor.webp`,
+  detective: `${import.meta.env.BASE_URL}roles/detective.webp`,
+  civilian:  `${import.meta.env.BASE_URL}roles/civilian.webp`,
 };
+
+/** Warm the browser cache before a card is shown. */
+export function preloadRoleArt(): void {
+  if (typeof window === "undefined") return;
+  for (const src of Object.values(ROLE_IMG)) {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = src;
+  }
+}
+
+preloadRoleArt();
 
 export default function CardFront({ role, width, height }: { role: Role; width: number; height: number }) {
   return (
@@ -58,6 +70,7 @@ export default function CardFront({ role, width, height }: { role: Role; width: 
       <img
         src={ROLE_IMG[role]}
         alt={role}
+        decoding="async"
         style={{
           width: "100%",
           height: "100%",

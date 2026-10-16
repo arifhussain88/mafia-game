@@ -13,7 +13,7 @@ import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
 import MuteToggle from "@/components/MuteToggle";
 import Atmosphere from "@/components/Atmosphere";
-import { playNightSting, playDayChime, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
+import { playNightSting, playDayChime, playMafiaKill, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
 
@@ -78,7 +78,6 @@ export default function App() {
   } | null>(null);
 
   const [nightSummaryLines, setNightSummaryLines] = useState<string[]>([]);
-  const [nightKillSound, setNightKillSound] = useState(false);
 
   const [elimInfo, setElimInfo] = useState<{
     name: string | null;
@@ -157,7 +156,6 @@ export default function App() {
     setDayNarration(null);
     setDetectiveResult(null);
     setNightSummaryLines([]);
-    setNightKillSound(false);
     setElimInfo(null);
     setWinner(null);
     setGameOverPlayers([]);
@@ -299,11 +297,14 @@ export default function App() {
       "night-summary",
       (data: { lines: string[]; eliminatedId: string | null; players: Player[] }) => {
         setNightSummaryLines(data.lines);
-        setNightKillSound(Boolean(data.eliminatedId));
         setPlayers(data.players);
         setPhase("night-summary");
       },
     );
+
+    socket.on("mafia-kill-sound", () => {
+      playMafiaKill();
+    });
 
     socket.on("day-vote-update", (data: { votes: Record<string, number> }) => {
       setDayVotes(data.votes);
@@ -453,10 +454,7 @@ export default function App() {
       )}
 
       {phase === "night-summary" && (
-        <NightSummary
-          lines={nightSummaryLines}
-          killSound={nightKillSound}
-        />
+        <NightSummary lines={nightSummaryLines} />
       )}
 
       {phase === "day-result" && elimInfo && (

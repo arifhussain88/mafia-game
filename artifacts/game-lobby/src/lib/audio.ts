@@ -141,24 +141,25 @@ export function playCountdownTick(): void {
   });
 }
 
-/** Soft typewriter key — keep short so it can fire once per revealed character. */
+/** Soft mechanical key — short enough to fire once per revealed character. */
 export function playTypewriterTick(): void {
   withAudio((ctx, now, level) => {
-    const amp = 0.09 * level;
-    const noiseLen = Math.max(1, Math.floor(ctx.sampleRate * 0.018));
+    const noiseLen = Math.max(1, Math.floor(ctx.sampleRate * 0.014));
     const buffer = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < noiseLen; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / noiseLen);
+      const t = i / noiseLen;
+      data[i] = (Math.random() * 2 - 1) * (1 - t) * (1 - t);
     }
     const noise = ctx.createBufferSource();
     noise.buffer = buffer;
     const filter = ctx.createBiquadFilter();
-    filter.type = "highpass";
-    filter.frequency.setValueAtTime(1800, now);
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(620 + Math.random() * 90, now);
+    filter.Q.setValueAtTime(1.1, now);
     const env = ctx.createGain();
     env.gain.setValueAtTime(0.0001, now);
-    env.gain.exponentialRampToValueAtTime(amp, now + 0.002);
+    env.gain.exponentialRampToValueAtTime(0.16 * level, now + 0.003);
     env.gain.exponentialRampToValueAtTime(0.0001, now + 0.028);
     noise.connect(filter);
     filter.connect(env);
@@ -169,69 +170,100 @@ export function playTypewriterTick(): void {
     const thock = ctx.createOscillator();
     const thockEnv = ctx.createGain();
     thock.type = "triangle";
-    thock.frequency.setValueAtTime(220 + Math.random() * 40, now);
+    thock.frequency.setValueAtTime(168 + Math.random() * 36, now);
+    thock.frequency.exponentialRampToValueAtTime(110, now + 0.03);
     thockEnv.gain.setValueAtTime(0.0001, now);
-    thockEnv.gain.exponentialRampToValueAtTime(0.05 * level, now + 0.001);
-    thockEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+    thockEnv.gain.exponentialRampToValueAtTime(0.14 * level, now + 0.002);
+    thockEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.036);
     thock.connect(thockEnv);
     thockEnv.connect(ctx.destination);
     thock.start(now);
-    thock.stop(now + 0.045);
+    thock.stop(now + 0.04);
   });
 }
 
-/** Royalty-free: synthesized metallic whoosh + hit. No third-party audio asset. */
-export function playSwordSlash(): void {
+/** Muffled shot: low thump plus a short dull crack. Synthesized. No sample file. */
+function playMuffledGunshot(ctx: AudioContext, now: number, level: number): void {
+  const len = Math.max(1, Math.floor(ctx.sampleRate * 0.07));
+  const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    const t = i / len;
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 2.4);
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(480, now);
+  filter.frequency.exponentialRampToValueAtTime(180, now + 0.08);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, now);
+  env.gain.exponentialRampToValueAtTime(0.7 * level, now + 0.006);
+  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+  noise.connect(filter);
+  filter.connect(env);
+  env.connect(ctx.destination);
+  noise.start(now);
+  noise.stop(now + 0.11);
+
+  const thump = ctx.createOscillator();
+  const thumpEnv = ctx.createGain();
+  thump.type = "sine";
+  thump.frequency.setValueAtTime(92, now);
+  thump.frequency.exponentialRampToValueAtTime(46, now + 0.12);
+  thumpEnv.gain.setValueAtTime(0.0001, now);
+  thumpEnv.gain.exponentialRampToValueAtTime(0.62 * level, now + 0.008);
+  thumpEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+  thump.connect(thumpEnv);
+  thumpEnv.connect(ctx.destination);
+  thump.start(now);
+  thump.stop(now + 0.18);
+}
+
+/** Short stab: a soft pitch drop and a dull impact. Synthesized. No sample file. */
+function playStab(ctx: AudioContext, now: number, level: number): void {
+  const len = Math.max(1, Math.floor(ctx.sampleRate * 0.04));
+  const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    const t = i / len;
+    data[i] = (Math.random() * 2 - 1) * (1 - t);
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(360, now);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, now);
+  env.gain.exponentialRampToValueAtTime(0.48 * level, now + 0.004);
+  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+  noise.connect(filter);
+  filter.connect(env);
+  env.connect(ctx.destination);
+  noise.start(now);
+  noise.stop(now + 0.08);
+
+  const blade = ctx.createOscillator();
+  const bladeEnv = ctx.createGain();
+  blade.type = "sine";
+  blade.frequency.setValueAtTime(168, now);
+  blade.frequency.exponentialRampToValueAtTime(58, now + 0.12);
+  bladeEnv.gain.setValueAtTime(0.0001, now);
+  bladeEnv.gain.exponentialRampToValueAtTime(0.5 * level, now + 0.006);
+  bladeEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+  blade.connect(bladeEnv);
+  bladeEnv.connect(ctx.destination);
+  blade.start(now);
+  blade.stop(now + 0.16);
+}
+
+/** Copyright-free kill hit. Gunshot or stab, chosen at random. No third-party sample. */
+export function playMafiaKill(): void {
   withAudio((ctx, now, level) => {
-    const bufferSize = Math.floor(ctx.sampleRate * 0.22);
-    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      const t = i / bufferSize;
-      data[i] = (Math.random() * 2 - 1) * (1 - t) * (1 - t);
-    }
-    const noise = ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    const noiseFilter = ctx.createBiquadFilter();
-    noiseFilter.type = "bandpass";
-    noiseFilter.frequency.setValueAtTime(2400, now);
-    noiseFilter.frequency.exponentialRampToValueAtTime(600, now + 0.2);
-    noiseFilter.Q.value = 0.8;
-    const noiseEnv = ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.0001, now);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.55 * level, now + 0.02);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-    noise.connect(noiseFilter);
-    noiseFilter.connect(noiseEnv);
-    noiseEnv.connect(ctx.destination);
-    noise.start(now);
-    noise.stop(now + 0.24);
-
-    const blade = ctx.createOscillator();
-    const bladeEnv = ctx.createGain();
-    blade.type = "sawtooth";
-    blade.frequency.setValueAtTime(420, now + 0.02);
-    blade.frequency.exponentialRampToValueAtTime(90, now + 0.28);
-    bladeEnv.gain.setValueAtTime(0.0001, now + 0.02);
-    bladeEnv.gain.exponentialRampToValueAtTime(0.22 * level, now + 0.04);
-    bladeEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
-    blade.connect(bladeEnv);
-    bladeEnv.connect(ctx.destination);
-    blade.start(now + 0.02);
-    blade.stop(now + 0.32);
-
-    const ring = ctx.createOscillator();
-    const ringEnv = ctx.createGain();
-    ring.type = "sine";
-    ring.frequency.setValueAtTime(1480, now + 0.05);
-    ring.frequency.exponentialRampToValueAtTime(740, now + 0.35);
-    ringEnv.gain.setValueAtTime(0.0001, now + 0.05);
-    ringEnv.gain.exponentialRampToValueAtTime(0.18 * level, now + 0.07);
-    ringEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
-    ring.connect(ringEnv);
-    ringEnv.connect(ctx.destination);
-    ring.start(now + 0.05);
-    ring.stop(now + 0.42);
+    if (Math.random() < 0.5) playMuffledGunshot(ctx, now, level);
+    else playStab(ctx, now, level);
   });
 }
 

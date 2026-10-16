@@ -100,7 +100,14 @@ function resolveStaticDir() {
 const staticDir = resolveStaticDir();
 if (staticDir) {
   logger.info({ staticDir }, "Serving static frontend");
-  app.use(express.static(staticDir, { index: false }));
+  app.use(express.static(staticDir, {
+    index: false,
+    setHeaders(res, filePath) {
+      if (/\.(webp|png|jpe?g|svg|woff2?)$/i.test(filePath)) {
+        res.setHeader("Cache-Control", "public, max-age=604800");
+      }
+    },
+  }));
   app.use((req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     if (req.path.startsWith("/api") || req.path.startsWith("/socket.io")) return next();

@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { playSwordSlash, playTypewriterTick } from "@/lib/audio";
+import { useEffect, useState } from "react";
+import { playTypewriterTick } from "@/lib/audio";
 
 type Props = {
   lines: string[];
-  /** Play the kill sting when the death line finishes typing. */
-  killSound?: boolean;
 };
 
 /** Keep in sync with api-server TYPEWRITER_* constants. */
@@ -12,19 +10,17 @@ const CHAR_DELAY_MS = 42;
 const LINE_PAUSE_MS = 1000;
 const START_DELAY_MS = 280;
 
-export default function NightSummary({ lines, killSound = false }: Props) {
+export default function NightSummary({ lines }: Props) {
   const [completedLines, setCompletedLines] = useState<string[]>([]);
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
   const [allDone, setAllDone] = useState(false);
-  const killPlayedRef = useRef(false);
 
   useEffect(() => {
     setCompletedLines([]);
     setCurrentLineIndex(0);
     setCurrentCharIndex(0);
     setAllDone(false);
-    killPlayedRef.current = false;
 
     if (lines.length === 0) return;
 
@@ -64,14 +60,6 @@ export default function NightSummary({ lines, killSound = false }: Props) {
 
       done.push(line);
       setCompletedLines([...done]);
-      if (
-        killSound &&
-        !killPlayedRef.current &&
-        /\bdead\b/i.test(line)
-      ) {
-        killPlayedRef.current = true;
-        playSwordSlash();
-      }
       lineIdx += 1;
       charIdx = 0;
       setCurrentLineIndex(lineIdx);
@@ -85,7 +73,7 @@ export default function NightSummary({ lines, killSound = false }: Props) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [lines, killSound]);
+  }, [lines]);
 
   const activePartial =
     currentLineIndex < lines.length
