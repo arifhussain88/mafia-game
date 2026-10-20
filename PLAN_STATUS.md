@@ -2,20 +2,19 @@
 
 Build the current plan, then the next one. Do not start a later plan early.
 
-## Production branch
+## Production
 
-- **Live / production branch:** `feature/done-live` (treat like production; currently checked out)
-- Do feature work on other branches. When you say a piece of work is **done**, merge that branch into `feature/done-live`.
-- **Fly deploys only from `feature/done-live`.** Do not deploy from feature or experiment branches unless you explicitly say otherwise.
+- **Live host:** Oracle Always Free VM — **http://141.148.204.30/** (HTTP; HTTPS when you add a domain)
+- **Live / production git branch:** `feature/done-live`
+- Do feature work on other branches. When you say a piece of work is **done**, merge that branch into `feature/done-live`, then deploy that tip to the Oracle VM.
+- Deploy to **Oracle only**. Do not recreate or use Fly as a live host.
+- **Former Fly app `mafia-wars`:** destroyed — not in use; do not bring Fly back for production unless you explicitly reverse this decision
 
 ## Now
 
-- [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — implemented locally (host timers, 3D cards, detective Mafia flip). Mark done and merge into `feature/done-live` when you say so; Fly deploy only from that branch
-- [x] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md) — live at https://mafia-wars.fly.dev/
-  - Fly Machines app `mafia-wars`, region `sin`, volume `/data`
-  - Hardened: bcrypt, socket auth, static SPA, Report/Block, terms chat copy, reconnect toasts
-  - Cost floor: 1×256MB, auto-stop (min 0), no HA, app abuse caps; worst-case always-on ~$3–5/mo compute
-  - True $0 after a test wave: `fly apps destroy mafia-wars` then confirm volume gone (`fly volumes destroy` if needed); redeploy later with `fly deploy --ha=false` + new volume
+- [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — implemented locally (host timers, 3D cards, detective Mafia flip). Mark done and merge into `feature/done-live` when you say so; deploy to Oracle from that branch
+- [x] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md) — was on Fly; superseded by Oracle host above
+- [x] [Oracle Always Free cutover](file:///C:/Users/ArifH/.cursor/plans/oracle_always_free_cutover_385545c1.plan.md) — verified on Oracle; public play at http://141.148.204.30/; Fly app destroyed
 
 ## Next (separate)
 
@@ -23,14 +22,14 @@ Build the current plan, then the next one. Do not start a later plan early.
   - Org is already on Neon Free ($0). Do **not** delete or change existing projects (`northline-revamp`, `northlinestore`)
   - New project only: `mafia-wars`. Free stays $0 under ~1 GB/project, 100 CU-hours/month, 5 GB egress — **not** until 1M users
   - Live rooms stay in memory; durable writes are signup/session, match end, and day chat
-  - Do not set Fly `DATABASE_URL` until local verify; no deploy until you say so
+  - Set `DATABASE_URL` on **Oracle** only after local verify; no live DB cutover until you say so
 
-## Deferred (after live)
+## Deferred
 
 - [ ] [Google ads revenue](file:///C:/Users/ArifH/.cursor/plans/google_ads_revenue_628e3cc9.plan.md)
-  - Do this yourself after the game is live on Fly
+  - After the game is stable on Oracle
   - One ad at game over, optional rewarded ad, no ads during a live match
-  - Not part of the first public upload / go-live pass
+- Domain + HTTPS (Caddy / Let’s Encrypt) when you have a domain pointing at `141.148.204.30`
 
 ## Done
 
