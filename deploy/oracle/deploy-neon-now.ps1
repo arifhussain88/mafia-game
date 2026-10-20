@@ -13,8 +13,8 @@ $envLocal = Join-Path $PSScriptRoot "mafia-wars.env"
 $updateSh = Join-Path $PSScriptRoot "remote-update.sh"
 
 if (-not (Test-Path $key)) { throw "Missing SSH key: $key" }
-if (-not (Test-Path $tar)) { throw "Missing $tar — run pack-release.ps1 first" }
-if (-not (Test-Path $envLocal)) { throw "Missing $envLocal — run write-mafia-wars-env.ps1 first" }
+if (-not (Test-Path $tar)) { throw "Missing $tar - run pack-release.ps1 first" }
+if (-not (Test-Path $envLocal)) { throw "Missing $envLocal - run write-mafia-wars-env.ps1 first" }
 
 Write-Host "==> Upload release + env + update script (enter SSH passphrase if asked)"
 scp -i $key $tar "ubuntu@${hostName}:/tmp/mafia-wars-release.tar"
@@ -33,4 +33,4 @@ curl -sS -o /dev/null -w "public HTTP %{http_code}\n" http://127.0.0.1/
 '@
 
 Write-Host ""
-Write-Host "Done. Check http://141.148.204.30/ — signup should hit Neon."
+Write-Host "Done. Check http://141.148.204.30/ - signup should hit Neon."
