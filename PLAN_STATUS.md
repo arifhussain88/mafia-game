@@ -8,8 +8,7 @@ Build the current plan, then the next one. Do not start a later plan early.
 - **Live / production git branch:** `feature/done-live`
 - Do feature work on other branches. When you say a piece of work is **done**, merge that branch into `feature/done-live`, then deploy that tip to the Oracle VM.
 - Deploy to **Oracle only**. Do not recreate or use Fly as a live host.
-- **Deploy runbook:** [deploy/oracle/DEPLOY_ORACLE.md](deploy/oracle/DEPLOY_ORACLE.md) — pack on Windows → scp tarball → `remote-update.sh` on the VM (Node + systemd + Caddy; **not** Docker on Oracle)
-- **Former Fly app `mafia-wars`:** destroyed — not in use; do not bring Fly back for production unless you explicitly reverse this decision. Repo `Dockerfile` was for Fly only.
+- **Former Fly app `mafia-wars`:** destroyed — not in use; do not bring Fly back for production unless you explicitly reverse this decision
 
 ## Now
 
@@ -20,8 +19,8 @@ Build the current plan, then the next one. Do not start a later plan early.
 ## Next (separate)
 
 - [ ] [Neon Free safe migrate](file:///C:/Users/ArifH/.cursor/plans/neon_free_safe_migrate_2400676a.plan.md) — single plan (recheck merged in): Neon Free Postgres for accounts, profiles, match history, chat
-  - New project only: `mafia-wars`. Never touch `northline-revamp` / `northlinestore`
-  - Stay Free ($0) until you upgrade org Sayed yourself; 0.25 CU + Free quotas; no Neon API key on Oracle
+  - New project only: `mafia-wars` in **`aws-ap-southeast-1` (Singapore)** — closest Free region to Oracle Mumbai (no Neon Mumbai). Never touch `northline-revamp` / `northlinestore`
+  - Stay Free ($0) until you upgrade org Sayed yourself; Postgres only (no Object Storage/Functions/AI Gateway); 0.25 CU + Free quotas; no Neon API key on Oracle
   - One store: unset `DATABASE_URL` → `users.json`; set → Neon only. Live rooms stay in memory; emit then async persist
   - Branch `feature/neon-migrate`; set Oracle `DATABASE_URL` only after local verify and only when you ask
 
