@@ -19,7 +19,7 @@ export function unlockAudio(): void {
   if (ctx?.state === "suspended") void ctx.resume();
 }
 
-const DEFAULT_VOLUME = 0.42;
+const DEFAULT_VOLUME = 0.6;
 
 const lobbyMusic = new Audio(`${import.meta.env.BASE_URL}audio/dark.mp3`);
 lobbyMusic.loop = true;
