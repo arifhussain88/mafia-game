@@ -1,0 +1,18 @@
+[Unit]
+Description=Mafia Wars API + lobby
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/mafia-wars
+Environment=NODE_ENV=production
+Environment=PORT=8080
+Environment=USERS_FILE=/data/users.json
+Environment=STATIC_DIR=/opt/mafia-wars/public
+ExecStart=/usr/bin/node --enable-source-maps /opt/mafia-wars/index.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
