@@ -28,8 +28,8 @@ tar -cf $tar -C $release .
 Write-Host "==> Wrote $tar"
 Write-Host ""
 Write-Host "Update (usual path) — see deploy/oracle/DEPLOY_ORACLE.md section B:"
-Write-Host "  scp -i `$env:USERPROFILE\.ssh\oracle_mafia $tar ubuntu@141.148.204.30:/tmp/"
-Write-Host "  scp -i `$env:USERPROFILE\.ssh\oracle_mafia deploy/oracle/remote-update.sh ubuntu@141.148.204.30:/tmp/"
-Write-Host "  # on VM: bash /tmp/remote-update.sh"
-Write-Host ""
-Write-Host "First-time VM only: also upload remote-setup.sh and run bash /tmp/remote-setup.sh"
+Write-Host ('  scp -i $env:USERPROFILE\.ssh\oracle_mafia {0} ubuntu@141.148.204.30:/tmp/' -f $tar)
+Write-Host '  scp -i $env:USERPROFILE\.ssh\oracle_mafia deploy/oracle/remote-update.sh ubuntu@141.148.204.30:/tmp/'
+Write-Host '  # on VM: bash /tmp/remote-update.sh'
+Write-Host ''
+Write-Host 'First-time VM only: also upload remote-setup.sh and run bash /tmp/remote-setup.sh'
