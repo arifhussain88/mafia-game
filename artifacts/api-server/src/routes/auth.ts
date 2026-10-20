@@ -1,14 +1,18 @@
 import { Router } from "express";
 import crypto from "crypto";
 import {
-  createSession,
+  countUsers,
+  createAuthSession,
+  createUser,
+  DbUnavailableError,
   deleteSession,
+  ensureTestUser,
+  findUserByEmail,
   getUserForToken,
   hashPassword,
   publicUser,
-  readStore,
+  updatePasswordHash,
   verifyPassword,
-  writeStore,
 } from "../lib/user-store";
 
 const router = Router();
@@ -47,23 +51,25 @@ function isTestEmail(email: string) {
   return TEST_USERS.some((user) => user.email === email);
 }
 
+function isDbDown(err: unknown) {
+  return err instanceof DbUnavailableError;
+}
+
 async function seedTestUsers() {
   if (process.env.NODE_ENV === "production") return;
-  const store = readStore();
-  let changed = false;
+  const passwordHash = await hashPassword(TEST_PASSWORD);
   for (const testUser of TEST_USERS) {
-    if (store.users.some((user) => user.email === testUser.email)) continue;
-    store.users.push({
-      id: crypto.randomUUID(),
-      name: testUser.name,
-      email: testUser.email,
-      dob: new Date("2000-01-01").toISOString(),
-      passwordHash: await hashPassword(TEST_PASSWORD),
-      createdAt: new Date().toISOString(),
-    });
-    changed = true;
+    try {
+      await ensureTestUser({
+        email: testUser.email,
+        name: testUser.name,
+        passwordHash,
+      });
+    } catch (err) {
+      if (isDbDown(err)) return;
+      throw err;
+    }
   }
-  if (changed) writeStore(store);
 }
 
 void seedTestUsers();
@@ -87,27 +93,32 @@ router.post("/signup", async (req, res) => {
   if (ageYears < 13) return res.status(403).json({ message: "You must be at least 13 years old to sign up" });
   if (String(password).length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
 
-  const store = readStore();
-  if (store.users.length >= MAX_USERS) {
-    return res.status(503).json({ message: "Signup is temporarily closed. Try again later." });
-  }
-  const exists = store.users.find((u) => u.email.toLowerCase() === String(email).toLowerCase());
-  if (exists) return res.status(409).json({ message: "Email already registered" });
+  try {
+    const total = await countUsers();
+    if (total >= MAX_USERS) {
+      return res.status(503).json({ message: "Signup is temporarily closed. Try again later." });
+    }
+    const exists = await findUserByEmail(String(email));
+    if (exists) return res.status(409).json({ message: "Email already registered" });
 
-  const id = crypto.randomUUID();
-  const passwordHash = await hashPassword(String(password));
-  const user = {
-    id,
-    name: String(name),
-    email: String(email).toLowerCase(),
-    dob: parsedDob.toISOString(),
-    passwordHash,
-    createdAt: new Date().toISOString(),
-  };
-  store.users.push(user);
-  const token = createSession(store, id);
-  writeStore(store);
-  return res.json({ user: publicUser(user), token });
+    const id = crypto.randomUUID();
+    const passwordHash = await hashPassword(String(password));
+    const user = await createUser({
+      id,
+      name: String(name),
+      email: String(email).toLowerCase(),
+      dob: parsedDob.toISOString(),
+      passwordHash,
+      createdAt: new Date().toISOString(),
+    });
+    const token = await createAuthSession(id);
+    return res.json({ user: publicUser(user), token });
+  } catch (err) {
+    if (isDbDown(err)) {
+      return res.status(503).json({ message: "Service temporarily unavailable. Try again." });
+    }
+    throw err;
+  }
 });
 
 router.post("/login", async (req, res) => {
@@ -120,34 +131,55 @@ router.post("/login", async (req, res) => {
   if (process.env.NODE_ENV === "production" && isTestEmail(normalizedEmail)) {
     return res.status(403).json({ message: "Test accounts are disabled" });
   }
-  const store = readStore();
-  const user = store.users.find((u) => u.email.toLowerCase() === normalizedEmail);
-  if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
-  const ok = await verifyPassword(String(password), user.passwordHash);
-  if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+  try {
+    const user = await findUserByEmail(normalizedEmail);
+    if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
-  // Upgrade legacy SHA-256 hashes to bcrypt on successful login
-  if (/^[a-f0-9]{64}$/i.test(user.passwordHash)) {
-    user.passwordHash = await hashPassword(String(password));
+    const ok = await verifyPassword(String(password), user.passwordHash);
+    if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+
+    if (/^[a-f0-9]{64}$/i.test(user.passwordHash)) {
+      const nextHash = await hashPassword(String(password));
+      await updatePasswordHash(user.id, nextHash);
+      user.passwordHash = nextHash;
+    }
+
+    const token = await createAuthSession(user.id);
+    return res.json({ user: publicUser(user), token });
+  } catch (err) {
+    if (isDbDown(err)) {
+      return res.status(503).json({ message: "Service temporarily unavailable. Try again." });
+    }
+    throw err;
   }
-
-  const token = createSession(store, user.id);
-  writeStore(store);
-  return res.json({ user: publicUser(user), token });
 });
 
-router.post("/logout", (req, res) => {
+router.post("/logout", async (req, res) => {
   const token = bearerToken(req);
-  deleteSession(token);
-  return res.json({ ok: true });
+  try {
+    await deleteSession(token);
+    return res.json({ ok: true });
+  } catch (err) {
+    if (isDbDown(err)) {
+      return res.status(503).json({ message: "Service temporarily unavailable. Try again." });
+    }
+    throw err;
+  }
 });
 
-router.get("/me", (req, res) => {
+router.get("/me", async (req, res) => {
   const token = bearerToken(req);
-  const user = getUserForToken(token);
-  if (!user) return res.status(401).json({ message: "Invalid token" });
-  return res.json({ user: { id: user.id, name: user.name, createdAt: user.createdAt } });
+  try {
+    const user = await getUserForToken(token);
+    if (!user) return res.status(401).json({ message: "Invalid token" });
+    return res.json({ user: { id: user.id, name: user.name, createdAt: user.createdAt } });
+  } catch (err) {
+    if (isDbDown(err)) {
+      return res.status(503).json({ message: "Service temporarily unavailable. Try again." });
+    }
+    throw err;
+  }
 });
 
 export default router;

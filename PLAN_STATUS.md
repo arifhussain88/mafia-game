@@ -18,11 +18,10 @@ Build the current plan, then the next one. Do not start a later plan early.
 
 ## Next (separate)
 
-- [ ] [Neon Free safe migrate](file:///C:/Users/ArifH/.cursor/plans/neon_free_safe_migrate_2400676a.plan.md) — single plan (recheck merged in): Neon Free Postgres for accounts, profiles, match history, chat
-  - New project only: `mafia-wars` in **`aws-ap-southeast-1` (Singapore)** — closest Free region to Oracle Mumbai (no Neon Mumbai). Never touch `northline-revamp` / `northlinestore`
-  - Stay Free ($0) until you upgrade org Sayed yourself; Postgres only (no Object Storage/Functions/AI Gateway); 0.25 CU + Free quotas; no Neon API key on Oracle
-  - One store: unset `DATABASE_URL` → `users.json`; set → Neon only. Live rooms stay in memory; emit then async persist
-  - Branch `feature/neon-migrate`; set Oracle `DATABASE_URL` only after local verify and only when you ask
+- [x] [Neon Free safe migrate](file:///C:/Users/ArifH/.cursor/plans/neon_free_safe_migrate_2400676a.plan.md) — Neon Free Postgres for accounts, profiles, match history, chat
+  - Project `mafia-wars` (`silent-firefly-22853615`) Free in **`aws-ap-southeast-1`**, 0.25 CU + Free quotas; org still Free
+  - `DATABASE_URL` on Oracle via `/etc/mafia-wars.env` (direct URL); no Neon API key on the VM
+  - One store: set → Neon; unset → `users.json`. Live rooms stay in memory; emit then async persist
 
 ## Deferred
 

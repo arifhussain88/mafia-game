@@ -9,7 +9,7 @@ export type LegalDocumentId = 'privacy' | 'terms';
 const privacySections: LegalSection[] = [
   {
     paragraphs: [
-      'Effective date: 29 September 2026. Language: English.',
+      'Effective date: 21 October 2026. Language: English.',
       'This policy explains what information Mafia Wars collects, why it is collected, and how you can access or delete it. Mafia Wars is a free multiplayer social-deduction game. The mobile app and the website are offered to players worldwide. They are not aimed at any one country, and they are not directed at children under 13.',
       'The same rights in this policy are available to every player. Extra notes for particular regions are included only where local law asks us to be more specific. Those notes do not reduce the rights offered to everyone else.',
     ],
@@ -17,7 +17,7 @@ const privacySections: LegalSection[] = [
   {
     heading: 'Who we are',
     paragraphs: [
-      'Mafia Wars is published by Sayyed Muhammad Arif Hussain, an individual developer. For privacy requests, email sayed.arif2001@gmail.com. The developer lives in Pakistan. That is the place from which the game is operated. It is not a limit on who may play.',
+      'Mafia Wars is published by Sayyed Muhammad Arif Hussain, an individual developer. For privacy requests, email mafiawars.support@proton.me. The developer lives in Pakistan. That is the place from which the game is operated. It is not a limit on who may play.',
     ],
   },
   {
@@ -28,7 +28,7 @@ const privacySections: LegalSection[] = [
     bullets: [
       'Account details. Email address, display name, and a password. Passwords are stored only as a hash, or are handled by the sign-in provider. We do not keep a readable copy of your password.',
       'Date of birth. We ask for this to confirm that you meet the age rule. On the mobile app, that check happens on your device and the date of birth is not uploaded. On the website, the date of birth is stored with your account so the age check can be kept.',
-      'Game and lobby activity. Room codes, the display names of people in a room, roles, votes, and whether a player is connected. This is used to run the match. Other people in the same room can see your display name, and can see your role when the rules reveal it. Day chat text is shown to players in the match and deleted when the match ends.',
+      'Game and lobby activity. Room codes, the display names of people in a room, roles, votes, and whether a player is connected. This is used to run the match. Other people in the same room can see your display name, and can see your role when the rules reveal it. Day chat text is shown to players in the match. When the website database is connected, a copy of finished-match history and day-chat records we choose to keep may also be stored after the match for history and moderation, as described below.',
       'Session data. A login token so you can stay signed in.',
       'Technical data. The host that serves the app or website may log an IP address, device or browser type, and basic request or error data so the service can run and so we can investigate abuse or outages.',
     ],
@@ -44,6 +44,7 @@ const privacySections: LegalSection[] = [
       'Create and sign you into your account, and provide the game you asked for.',
       'Apply the age rule.',
       'Place you in a room and run the match.',
+      'Keep finished match history and related records when the website database is connected.',
       'Answer support, access, correction, and deletion requests.',
       'Protect the service against abuse, such as repeated failed sign-ins or attempts to disrupt a room.',
     ],
@@ -51,23 +52,25 @@ const privacySections: LegalSection[] = [
   {
     heading: 'Who else processes it',
     paragraphs: [
-      'When the mobile app is connected to cloud sign-in and cloud lobbies, Google Firebase (Authentication and Cloud Firestore) processes your email, password credential, and lobby records for us. Google may process that data in the United States and other countries where Google operates.',
-      'The website game server is operated by us. Active matches are kept in memory so the round can finish. They are not stored as a permanent match history, and they are lost if the server restarts.',
-      'We do not use a separate advertising or analytics product. Firebase may still process the operational data required to provide Authentication and Firestore. We have not put in place separate Standard Contractual Clauses of our own with players. Where a provider such as Google offers its own international-transfer terms, those terms apply to that provider’s processing.',
+      'When the mobile app is connected to cloud sign-in and cloud lobbies, Google Firebase (Authentication and Cloud Firestore) processes your email, password credential, and lobby records for us. Google may process that data in the United States and other countries where Google operates. Google’s privacy information is at firebase.google.com/support/privacy.',
+      'The website game server is operated by us on Oracle Cloud Infrastructure. Live rooms, votes, timers, and in-progress match state stay in memory on that server so the round can finish. That live state is not the durable database, and it is lost if the server restarts mid-match.',
+      'When the website database is connected, Neon (managed Postgres) stores durable website account data (email, display name, password hash, date of birth), sessions, profiles, finished-match history, and day-chat records we choose to keep. That Neon project is in the aws-ap-southeast-1 (Singapore) region. Neon’s privacy information is at neon.tech/privacy-policy.',
+      'We do not use a separate advertising or analytics product. Firebase may still process the operational data required to provide Authentication and Firestore. Providers such as Oracle, Neon, and Google may process data under their own terms. We have not put in place separate Standard Contractual Clauses of our own with players. Where a provider offers its own international-transfer terms, those terms apply to that provider’s processing.',
     ],
   },
   {
     heading: 'Where it is processed',
     paragraphs: [
-      'Account and game data may be processed in Pakistan, because that is where the developer operates the service. If you use cloud sign-in or cloud lobbies, Google may also process that data in the United States and other countries. Those countries may not provide the same level of legal protection as the country where you live.',
-      'If you are in the European Economic Area, the United Kingdom, or Switzerland, Pakistan does not have an adequacy decision from the European Commission. By creating an account, you consent to this transfer and storage so that we can provide the game. You may withdraw that consent by asking us to delete your account. Withdrawal does not affect processing that happened before the withdrawal, and we may not be able to keep providing the game without the account data.',
+      'Account and game data may be processed in Pakistan, because that is where the developer operates the service; on Oracle Cloud Infrastructure, where the website host runs; in Singapore, when Neon stores durable website data; and, if you use cloud sign-in or cloud lobbies, by Google in the United States and other countries. Those places may not provide the same level of legal protection as the country where you live.',
+      'If you are in the European Economic Area, the United Kingdom, or Switzerland, those processing locations may not have an adequacy decision from the European Commission covering every transfer. By creating an account, you consent to this transfer and storage so that we can provide the game. You may withdraw that consent by asking us to delete your account. Withdrawal does not affect processing that happened before the withdrawal, and we may not be able to keep providing the game without the account data.',
     ],
   },
   {
     heading: 'How long we keep it',
     bullets: [
-      'Account data (email, display name, password hash, and, on the website, date of birth) is kept until you delete the account or we close it.',
-      'Lobby and match data is kept only while that room or match exists.',
+      'Account and profile data (email, display name, password hash, and, on the website, date of birth) is kept until you delete the account or we close it, whether held on the website server’s file store or in Neon once the database is connected.',
+      'Live lobby and in-progress match data is kept only while that room or match exists on the game server.',
+      'Finished match history and retained day-chat (when Neon is connected) are kept until you delete the account or we delete them under this policy.',
       'Login tokens are kept until you log out, the token is replaced, or the account is deleted.',
       'Security and error logs that contain an IP address are kept only as long as needed to operate and protect the service, and not longer than 90 days, unless a longer period is required to investigate abuse or to comply with law.',
     ],
@@ -75,7 +78,7 @@ const privacySections: LegalSection[] = [
   {
     heading: 'Your rights',
     paragraphs: [
-      'Wherever you live, you may email sayed.arif2001@gmail.com from the address on the account to:',
+      'Wherever you live, you may email mafiawars.support@proton.me from the address on the account to:',
     ],
     bullets: [
       'Ask for a copy of the account data we hold.',
@@ -87,7 +90,7 @@ const privacySections: LegalSection[] = [
   },
   {
     paragraphs: [
-      'For deletion, use the subject “Mafia Wars account deletion” and say whether you use the mobile app, the website, or both. We will delete the account data we hold within 30 days. That includes your email, display name, date of birth if we stored it, password hash, and login tokens. We may keep a minimal record if we must do so to comply with law, resolve a security incident, or prevent abuse of the same account. Uninstalling the app does not delete a cloud or website account.',
+      'For deletion, use the subject “Mafia Wars account deletion” and say whether you use the mobile app, the website, or both. We will delete the account data we hold within 30 days. That includes your email, display name, date of birth if we stored it, password hash, login tokens, and, when stored in Neon, related profile, finished-match, and retained chat records tied to the account. We may keep a minimal record if we must do so to comply with law, resolve a security incident, or prevent abuse of the same account. Uninstalling the app does not delete a cloud or website account.',
       'We will not charge you for a reasonable request, and we will not treat you differently because you made one.',
     ],
   },
@@ -99,7 +102,7 @@ const privacySections: LegalSection[] = [
     bullets: [
       'Contract. To create your account and run the game you asked to play.',
       'Legitimate interests. To keep the service secure, prevent abuse, and understand outages. Those interests are limited to operating a small multiplayer game, and they do not override your rights.',
-      'Consent. For the age check you choose to complete, and for transferring account data to Pakistan and, when cloud features are on, to Google, as described above.',
+      'Consent. For the age check you choose to complete, and for transferring account data to Pakistan, Oracle Cloud, Neon (Singapore), and, when cloud features are on, to Google, as described above.',
       'Legal obligation. Where we must keep or disclose information to comply with law.',
     ],
   },
@@ -118,7 +121,7 @@ const privacySections: LegalSection[] = [
   {
     heading: 'Age',
     paragraphs: [
-      'You must be at least 13 years old to create an account. If the law where you live sets a higher age for consenting to this kind of service, you must meet that higher age. The game is not directed to children under 13, and it is not part of a program for children. We do not knowingly collect personal information from a child under 13. If you believe we have, email sayed.arif2001@gmail.com and we will delete it.',
+      'You must be at least 13 years old to create an account. If the law where you live sets a higher age for consenting to this kind of service, you must meet that higher age. The game is not directed to children under 13, and it is not part of a program for children. We do not knowingly collect personal information from a child under 13. If you believe we have, email mafiawars.support@proton.me and we will delete it.',
     ],
   },
   {
@@ -135,21 +138,21 @@ const privacySections: LegalSection[] = [
   },
   {
     heading: 'Contact',
-    paragraphs: ['Sayyed Muhammad Arif Hussain, Pakistan. sayed.arif2001@gmail.com'],
+    paragraphs: ['Sayyed Muhammad Arif Hussain, Pakistan. mafiawars.support@proton.me'],
   },
 ];
 
 const termsSections: LegalSection[] = [
   {
     paragraphs: [
-      'Effective date: 29 September 2026. Language: English.',
+      'Effective date: 21 October 2026. Language: English.',
       'These terms are an agreement between you and Sayyed Muhammad Arif Hussain (“we”, “us”) for the Mafia Wars mobile app and website. The game is offered worldwide. By creating an account, or by accepting these terms, you agree to them and to the Privacy Policy. If a translation of these terms is ever published, the English text controls.',
     ],
   },
   {
     heading: 'The service',
     paragraphs: [
-      'Mafia Wars is a free multiplayer game for personal entertainment. Players are assigned fictional roles and try to win a round by voting and using those roles. Nothing in the game is an invitation to harm a real person. There is no price, no virtual currency, and no paid items. The service is operated by one developer and may change, pause, or stop.',
+      'Mafia Wars is a free multiplayer game for personal entertainment. Players are assigned fictional roles and try to win a round by voting and using those roles. Nothing in the game is an invitation to harm a real person. There is no price, no virtual currency, and no paid items. The service is operated by one developer and may change, pause, or stop. The website may store finished match history as described in the Privacy Policy.',
     ],
   },
   {
@@ -161,8 +164,8 @@ const termsSections: LegalSection[] = [
   {
     heading: 'Your account',
     paragraphs: [
-      'Keep your password private. Tell us at sayed.arif2001@gmail.com if you believe someone else is using your account. We may refuse a display name, reset a room, or close an account that breaks these terms.',
-      'To delete an account, email sayed.arif2001@gmail.com from the address on the account with the subject “Mafia Wars account deletion”. We will delete the personal information described in the Privacy Policy within 30 days. Removing the app from your device does not delete the account.',
+      'Keep your password private. Tell us at mafiawars.support@proton.me if you believe someone else is using your account. We may refuse a display name, reset a room, or close an account that breaks these terms.',
+      'To delete an account, email mafiawars.support@proton.me from the address on the account with the subject “Mafia Wars account deletion”. We will delete the personal information described in the Privacy Policy within 30 days. Removing the app from your device does not delete the account.',
     ],
   },
   {
@@ -216,7 +219,7 @@ const termsSections: LegalSection[] = [
   {
     heading: 'Disputes',
     paragraphs: [
-      'If you have a problem with the game, email sayed.arif2001@gmail.com first and give us a reasonable chance to resolve it. These terms do not require arbitration, and they do not waive any right to bring a claim with other people where the law gives you that right.',
+      'If you have a problem with the game, email mafiawars.support@proton.me first and give us a reasonable chance to resolve it. These terms do not require arbitration, and they do not waive any right to bring a claim with other people where the law gives you that right.',
       'The contract law of Pakistan governs these terms, because that is where the developer lives and operates the service. This choice does not override a mandatory consumer-protection right in the country where you live. If such a right conflicts with these terms, that right controls. You may also use any court or procedure that the law of your country says we cannot take away from you.',
     ],
   },
@@ -234,7 +237,7 @@ const termsSections: LegalSection[] = [
   },
   {
     heading: 'Contact',
-    paragraphs: ['Sayyed Muhammad Arif Hussain, Pakistan. sayed.arif2001@gmail.com'],
+    paragraphs: ['Sayyed Muhammad Arif Hussain, Pakistan. mafiawars.support@proton.me'],
   },
 ];
 

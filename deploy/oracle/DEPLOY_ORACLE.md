@@ -14,8 +14,9 @@ Scripts in this folder were first committed on `feature/oracle-cutover` (`da470c
 | Piece | Path / unit | Notes |
 |--------|-------------|--------|
 | App files | `/opt/mafia-wars/` | Built `index.mjs` + `public/` (lobby static) |
-| Accounts | `/data/users.json` | `USERS_FILE=/data/users.json` — **do not overwrite on updates** |
-| Node service | `mafia-wars.service` | `PORT=8080`, `STATIC_DIR=/opt/mafia-wars/public` |
+| Accounts | Neon when `DATABASE_URL` is set; else `/data/users.json` | `USERS_FILE=/data/users.json` kept as fallback — **do not overwrite on updates** |
+| DB secret | `/etc/mafia-wars.env` | Optional `DATABASE_URL` (direct Neon URL, not pooler). Mode `600`. Never commit. |
+| Node service | `mafia-wars.service` | `PORT=8080`, `STATIC_DIR=/opt/mafia-wars/public`, `EnvironmentFile=-/etc/mafia-wars.env` |
 | Reverse proxy | Caddy `/etc/caddy/Caddyfile` | `:80` → `127.0.0.1:8080` (HTTP until you have a domain) |
 | Swap | `/swapfile` (2G file on boot disk) | Not an OCI Block Volume; stays Always Free |
 
@@ -113,6 +114,21 @@ bash /tmp/remote-update.sh
 ```
 
 **Never** delete `/data/users.json` during an update.
+
+### Neon `DATABASE_URL` (opt-in)
+
+On the VM only (direct endpoint host, **no** `-pooler` in the hostname):
+
+```bash
+sudo install -m 600 -o root -g root /dev/null /etc/mafia-wars.env
+sudo tee /etc/mafia-wars.env >/dev/null <<'EOF'
+DATABASE_URL=postgresql://USER:PASSWORD@ep-XXXX.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart mafia-wars
+```
+
+To fall back to JSON: remove or empty `/etc/mafia-wars.env`, then `sudo systemctl restart mafia-wars`.
 
 ### 3. Public check
 

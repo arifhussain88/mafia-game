@@ -1,6 +1,7 @@
 import { Server, Socket } from "socket.io";
+import { persistChatMessage, persistMatchEnd } from "./lib/game-persist";
 import { logger } from "./lib/logger";
-import { getUserForToken } from "./lib/user-store";
+import { DbUnavailableError, getUserForToken } from "./lib/user-store";
 
 
 const TIMERS = {
@@ -110,6 +111,8 @@ type Phase =
 interface Player {
   id: string;
   name: string;
+  /** Account id from auth (not socket id). Used for durable history. */
+  userId?: string;
   isHost: boolean;
   alive: boolean;
   connected: boolean;
@@ -706,6 +709,17 @@ function endGame(io: Server, code: string, winner: "mafia" | "civilians") {
     players: serializePlayers(room.players, true),
   });
 
+  persistMatchEnd({
+    roomCode: code,
+    winner,
+    players: Array.from(room.players.values()).map((p) => ({
+      userId: p.userId,
+      name: p.name,
+      role: p.role,
+      alive: p.alive,
+    })),
+  });
+
   logger.info({ code, winner }, "Game over");
 }
 
@@ -787,25 +801,34 @@ function sweepEmptyRooms() {
 export function registerSocketHandlers(io: Server) {
   setInterval(sweepEmptyRooms, ROOM_GC_INTERVAL_MS);
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = (socket.handshake.auth as { token?: string } | undefined)?.token
       ?? (typeof socket.handshake.headers.authorization === "string"
         ? socket.handshake.headers.authorization.replace(/^Bearer\s+/i, "")
         : undefined);
-    const user = getUserForToken(token);
-    if (!user) {
-      next(new Error("Unauthorized"));
-      return;
+    try {
+      const user = await getUserForToken(token);
+      if (!user) {
+        next(new Error("Unauthorized"));
+        return;
+      }
+      const ip = socketClientIp(socket);
+      const existing = socketsByIp.get(ip);
+      if (existing && existing.size >= MAX_SOCKETS_PER_IP) {
+        next(new Error("Too many connections from this network"));
+        return;
+      }
+      socket.data.userId = user.id;
+      socket.data.userName = user.name;
+      next();
+    } catch (err) {
+      // Do not map DB blips to Unauthorized (that clears mafia-token on the client).
+      if (err instanceof DbUnavailableError) {
+        next(new Error("Service unavailable"));
+        return;
+      }
+      next(err instanceof Error ? err : new Error("Unauthorized"));
     }
-    const ip = socketClientIp(socket);
-    const existing = socketsByIp.get(ip);
-    if (existing && existing.size >= MAX_SOCKETS_PER_IP) {
-      next(new Error("Too many connections from this network"));
-      return;
-    }
-    socket.data.userId = user.id;
-    socket.data.userName = user.name;
-    next();
   });
 
   io.on("connection", (socket: Socket) => {
@@ -823,7 +846,15 @@ export function registerSocketHandlers(io: Server) {
       let code = generateCode();
       while (rooms.has(code)) code = generateCode();
 
-      const player: Player = { id: socket.id, name, isHost: true, alive: true, connected: true, role: null };
+      const player: Player = {
+        id: socket.id,
+        name,
+        userId: typeof socket.data.userId === "string" ? socket.data.userId : undefined,
+        isHost: true,
+        alive: true,
+        connected: true,
+        role: null,
+      };
       const room: Room = {
         code,
         players: new Map([[socket.id, player]]),
@@ -890,6 +921,7 @@ export function registerSocketHandlers(io: Server) {
         room.players.delete(disconnected.id);
         disconnected.id = socket.id;
         disconnected.connected = true;
+        if (typeof socket.data.userId === "string") disconnected.userId = socket.data.userId;
         room.players.set(socket.id, disconnected);
         socket.join(code);
 
@@ -925,7 +957,15 @@ export function registerSocketHandlers(io: Server) {
         return;
       }
 
-      const player: Player = { id: socket.id, name, isHost: false, alive: true, connected: true, role: null };
+      const player: Player = {
+        id: socket.id,
+        name,
+        userId: typeof socket.data.userId === "string" ? socket.data.userId : undefined,
+        isHost: false,
+        alive: true,
+        connected: true,
+        role: null,
+      };
       room.players.set(socket.id, player);
       socket.join(code);
 
@@ -1053,6 +1093,12 @@ export function registerSocketHandlers(io: Server) {
         const message: ChatMessage = { id: String(room.chatSeq), name: player.name, text };
         room.chatMessages.push(message);
         emitChatMessage(io, room, message);
+        persistChatMessage({
+          roomCode: code,
+          userId: player.userId,
+          name: player.name,
+          text,
+        });
         logger.info({ code, name: player.name }, "Chat message");
         return;
       }

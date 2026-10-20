@@ -10,6 +10,10 @@ Environment=NODE_ENV=production
 Environment=PORT=8080
 Environment=USERS_FILE=/data/users.json
 Environment=STATIC_DIR=/opt/mafia-wars/public
+# Optional secrets (DATABASE_URL). Create on the VM only — never commit:
+#   sudo install -m 600 /dev/null /etc/mafia-wars.env
+#   echo 'DATABASE_URL=postgresql://...' | sudo tee /etc/mafia-wars.env
+EnvironmentFile=-/etc/mafia-wars.env
 ExecStart=/usr/bin/node --enable-source-maps /opt/mafia-wars/index.mjs
 Restart=on-failure
 RestartSec=5

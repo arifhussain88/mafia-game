@@ -47,6 +47,11 @@ Thumbs.db
 **/data/users.json
 artifacts/api-server/data/users.json
 
+# Local secrets (Neon DATABASE_URL, etc.)
+.env
+.env.*
+!.env.example
+
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
