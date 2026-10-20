@@ -13,6 +13,9 @@ import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
 import MuteToggle from "@/components/MuteToggle";
 import Atmosphere from "@/components/Atmosphere";
+import LeaveMatchButton from "@/components/LeaveMatchButton";
+import MatchTicker from "@/components/MatchTicker";
+import RoomChat from "@/components/RoomChat";
 import { playNightSting, playDayChime, playMafiaKill, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
@@ -40,9 +43,15 @@ export type GamePhase =
   | "day-result"
   | "game-over";
 
+function isActiveMatchPhase(phase: GamePhase): boolean {
+  return phase !== "home" && phase !== "lobby" && phase !== "game-over";
+}
+
 export default function App() {
   const socketRef = useRef<Socket | null>(null);
   const prevPhaseRef = useRef<GamePhase>("home");
+  const phaseRef = useRef<GamePhase>("home");
+  const leaveSentRef = useRef(false);
   const { toast } = useToast();
 
   const [mySocketId, setMySocketId] = useState("");
@@ -87,15 +96,80 @@ export default function App() {
 
   const [winner, setWinner] = useState<"mafia" | "civilians" | null>(null);
   const [gameOverPlayers, setGameOverPlayers] = useState<Player[]>([]);
+  const [tickerMessage, setTickerMessage] = useState<string | null>(null);
+  const tickerSeqRef = useRef(0);
+
+  function showTicker(text: string) {
+    tickerSeqRef.current += 1;
+    setTickerMessage(`${text}\u200B${tickerSeqRef.current}`);
+  }
 
   // Phase transition sounds — ignore first transition from "home"
   useEffect(() => {
+    phaseRef.current = phase;
+    if (phase === "lobby" || phase === "home") leaveSentRef.current = false;
     if (phase === prevPhaseRef.current) return;
     const prev = prevPhaseRef.current;
     prevPhaseRef.current = phase;
     if (phase === "night-mafia" && prev !== "home") playNightSting();
     if (phase === "day-discussion") playDayChime();
   }, [phase]);
+
+  function resetToHome() {
+    leaveSentRef.current = true;
+    setPhase("home");
+    setPlayers([]);
+    setRoomCode("");
+    setIsHost(false);
+    setMyRole(null);
+    setMafiaNames([]);
+    setMafiaIds([]);
+    setTimerEndsAt(null);
+    setNightVoteStatus({ voted: 0, total: 0 });
+    setMyNightVote(null);
+    setMyDoctorVote(null);
+    setMyDetectiveVote(null);
+    setDayVotes({});
+    setMyDayVote(null);
+    setChatMessages([]);
+    blockedNamesRef.current = new Set();
+    setDayNarration(null);
+    setDetectiveResult(null);
+    setNightSummaryLines([]);
+    setElimInfo(null);
+    setWinner(null);
+    setGameOverPlayers([]);
+    setTickerMessage(null);
+  }
+
+  const leaveMatch = useCallback(() => {
+    if (leaveSentRef.current) return;
+    leaveSentRef.current = true;
+    socketRef.current?.emit("leave-game");
+    resetToHome();
+  }, []);
+
+  useEffect(() => {
+    function emitLeaveIfNeeded() {
+      if (!isActiveMatchPhase(phaseRef.current) || leaveSentRef.current) return;
+      leaveSentRef.current = true;
+      socketRef.current?.emit("leave-game");
+    }
+    function onPageHide(event: PageTransitionEvent) {
+      // bfcache / tab switch — treat as soft disconnect, not forfeit
+      if (event.persisted) return;
+      emitLeaveIfNeeded();
+    }
+    function onBeforeUnload() {
+      emitLeaveIfNeeded();
+    }
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, []);
 
   // Ambient loop on the opening screen, in the lobby, and after the game ends.
   useEffect(() => {
@@ -251,9 +325,6 @@ export default function App() {
           setDetectiveResult(null);
           setNightVoteStatus({ voted: 0, total: 0 });
         }
-        if (data.phase !== "day-vote") {
-          setChatMessages([]);
-        }
         if (data.phase === "day-vote") {
           setDayVotes(data.votes ?? {});
           setMyDayVote(null);
@@ -315,12 +386,28 @@ export default function App() {
       setChatMessages((current) => [...current, data]);
     });
 
+    socket.on("chat-history", (data: { messages: { id: string; name: string; text: string }[] }) => {
+      const blocked = blockedNamesRef.current;
+      setChatMessages((data.messages ?? []).filter((m) => !blocked.has(m.name)));
+    });
+
+    socket.on("player-left", (data: { name: string }) => {
+      showTicker(`${data.name} left the game`);
+    });
+
+    socket.on("player-rejoined", (data: { name: string }) => {
+      showTicker(`${data.name} rejoined the game`);
+    });
+
+    socket.on("left-game", () => {
+      resetToHome();
+    });
+
     socket.on(
       "day-result",
       (data: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; players: Player[] }) => {
         setPhase("day-result");
         setPlayers(data.players);
-        setChatMessages([]);
         setElimInfo({ name: data.eliminatedName, skipped: data.skipped, phase: "day-result" });
       },
     );
@@ -476,10 +563,6 @@ export default function App() {
           myDayVote={myDayVote}
           narration={dayNarration}
           detectiveResult={myRole === "detective" ? detectiveResult : null}
-          chatMessages={chatMessages}
-          onSendChat={sendChat}
-          onReportChat={reportChat}
-          onBlockPlayer={blockPlayer}
           onDayVote={castDayVote}
         />
       )}
@@ -494,6 +577,17 @@ export default function App() {
         />
       )}
 
+      {isActiveMatchPhase(phase) && <LeaveMatchButton onConfirm={leaveMatch} />}
+      {phase !== "home" && (
+        <RoomChat
+          myName={myName}
+          messages={chatMessages}
+          onSend={sendChat}
+          onReport={reportChat}
+          onBlock={blockPlayer}
+        />
+      )}
+      <MatchTicker message={tickerMessage} />
       <MuteToggle />
       <Toaster />
     </div>

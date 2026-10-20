@@ -103,7 +103,8 @@ export default function HowToPlay({ open, onOpenChange }: Props) {
               Chat
             </h3>
             <p className="text-gray-300">
-              Chat is only during day discussion. There is no night chat.
+              Room chat stays open from the lobby through the whole match, including night. You can
+              report or block messages from your own view.
             </p>
           </div>
 
@@ -114,7 +115,7 @@ export default function HowToPlay({ open, onOpenChange }: Props) {
             <ul className="list-disc pl-4 text-gray-300 space-y-1">
               <li>Join a room. The host starts when enough players are ready (at least 3).</li>
               <li>Keep your role secret.</li>
-              <li>Be kind in chat — you can report or block on day chat.</li>
+              <li>Be kind in chat — you can report or block anyone in room chat.</li>
             </ul>
           </div>
         </section>

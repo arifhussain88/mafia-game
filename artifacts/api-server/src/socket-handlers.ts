@@ -13,6 +13,8 @@ const TIMERS = {
   DAY_DISCUSSION: 60000,
   DAY_VOTE: 30000,
   DAY_RESULT: 5000,
+  /** Delay before an intentional leave becomes a permanent forfeit. */
+  FORFEIT_GRACE: 15000,
 };
 
 /** Per-room host overrides (seconds). Applied to night step / day discussion / day vote. */
@@ -137,6 +139,9 @@ interface Room {
   lastChatAt: Map<string, number>;
   emptySince?: number;
   timerSettings: TimerSettings;
+  /** Lowercase display names that intentionally left; cannot soft-reconnect. */
+  forfeitedNames: Set<string>;
+  pendingForfeits: Map<string, ReturnType<typeof setTimeout>>;
 }
 
 const rooms = new Map<string, Room>();
@@ -235,6 +240,109 @@ function assignRoles(room: Room) {
 function clearDayChat(room: Room) {
   room.chatMessages = [];
   room.lastChatAt = new Map();
+}
+
+function clearPendingForfeits(room: Room) {
+  for (const timer of room.pendingForfeits.values()) clearTimeout(timer);
+  room.pendingForfeits.clear();
+}
+
+function emitPlayersUpdated(io: Server, code: string, room: Room) {
+  for (const p of room.players.values()) {
+    io.to(p.id).emit("players-updated", { players: serializePlayers(room.players, false, p.id) });
+  }
+}
+
+function clearPlayerActions(room: Room, playerId: string) {
+  room.nightVotes.delete(playerId);
+  room.dayVotes.delete(playerId);
+  room.doctorProtect.delete(playerId);
+  room.detectiveInvestigate.delete(playerId);
+  for (const [voterId, targetId] of Array.from(room.dayVotes.entries())) {
+    if (targetId === playerId) room.dayVotes.delete(voterId);
+  }
+}
+
+function transferHost(room: Room) {
+  const hasHost = Array.from(room.players.values()).some((p) => p.isHost);
+  if (hasHost) return;
+  const next = room.players.values().next().value as Player | undefined;
+  if (next) next.isHost = true;
+}
+
+function maybeAdvanceNightAfterAbsence(io: Server, code: string, room: Room) {
+  if (room.phase === "night-mafia") {
+    broadcastNightVoteStatus(io, code);
+    const mafiaAlive = connectedLivingMafia(room);
+    const allVoted = mafiaAlive.length === 0 || mafiaAlive.every((m) => room.nightVotes.has(m.id));
+    if (allVoted) {
+      clearRoomTimer(room);
+      room.timer = setTimeout(() => startNightDoctor(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
+    }
+    return;
+  }
+
+  if (room.phase === "night-doctor") {
+    const doctorOnline = living(room).some((p) => p.role === "doctor" && p.connected);
+    if (!doctorOnline) {
+      clearRoomTimer(room);
+      room.timer = setTimeout(() => startNightDetective(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
+    }
+    return;
+  }
+
+  if (room.phase === "night-detective") {
+    const detectiveOnline = living(room).some((p) => p.role === "detective" && p.connected);
+    if (!detectiveOnline) {
+      clearRoomTimer(room);
+      room.timer = setTimeout(() => resolveNight(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
+    }
+  }
+}
+
+function applyForfeit(io: Server, code: string, playerId: string) {
+  const room = rooms.get(code);
+  if (!room) return;
+  room.pendingForfeits.delete(playerId);
+
+  const player = room.players.get(playerId);
+  if (!player) return;
+
+  const name = player.name;
+  const wasHost = player.isHost;
+  player.alive = false;
+  player.connected = false;
+  player.isHost = false;
+  clearPlayerActions(room, playerId);
+  room.forfeitedNames.add(name.toLowerCase());
+
+  if (wasHost) transferHost(room);
+
+  io.to(code).emit("player-left", { name });
+  emitPlayersUpdated(io, code, room);
+
+  if (room.phase === "day-vote") {
+    const voteCounts: Record<string, number> = {};
+    for (const targetId of room.dayVotes.values()) {
+      voteCounts[targetId] = (voteCounts[targetId] ?? 0) + 1;
+    }
+    io.to(code).emit("day-vote-update", { votes: voteCounts });
+  }
+
+  maybeAdvanceNightAfterAbsence(io, code, room);
+
+  const winner = checkWin(room);
+  if (
+    winner &&
+    room.phase !== "night-summary" &&
+    room.phase !== "day-result" &&
+    room.phase !== "game-over"
+  ) {
+    clearRoomTimer(room);
+    endGame(io, code, winner);
+  }
+
+  logger.info({ code, name }, "Player forfeited after grace");
 }
 
 function emitChatMessage(io: Server, room: Room, message: ChatMessage) {
@@ -539,7 +647,6 @@ function resolveDay(io: Server, code: string) {
 
   clearRoomTimer(room);
   room.phase = "day-result";
-  clearDayChat(room);
 
   const voteCounts = new Map<string, number>();
   for (const targetId of room.dayVotes.values()) {
@@ -606,23 +713,16 @@ function handleMidGameDisconnect(socketId: string, room: Room, io: Server, code:
   const player = room.players.get(socketId);
   if (!player) return;
 
-  player.connected = false;
-  room.nightVotes.delete(socketId);
-  room.dayVotes.delete(socketId);
-  room.doctorProtect.delete(socketId);
-  room.detectiveInvestigate.delete(socketId);
-
-  io.to(code).emit("players-updated", { players: serializePlayers(room.players) });
-
-  if (room.phase === "night-mafia") {
-    broadcastNightVoteStatus(io, code);
-    const mafiaAlive = connectedLivingMafia(room);
-    const allVoted = mafiaAlive.length === 0 || mafiaAlive.every((m) => room.nightVotes.has(m.id));
-    if (allVoted) {
-      clearRoomTimer(room);
-      room.timer = setTimeout(() => startNightDoctor(io, code), TIMERS.NIGHT_EARLY_ADVANCE);
-    }
+  // Intentional leave already scheduled a forfeit — keep soft handling off that seat.
+  if (room.pendingForfeits.has(socketId) || room.forfeitedNames.has(player.name.toLowerCase())) {
+    player.connected = false;
+    return;
   }
+
+  player.connected = false;
+  clearPlayerActions(room, socketId);
+  emitPlayersUpdated(io, code, room);
+  maybeAdvanceNightAfterAbsence(io, code, room);
 
   const winner = checkWin(room);
   if (
@@ -664,6 +764,7 @@ function untrackSocketIp(socket: Socket) {
 
 function destroyRoom(code: string, room: Room) {
   clearRoomTimer(room);
+  clearPendingForfeits(room);
   rooms.delete(code);
   logger.info({ code }, "Room destroyed");
 }
@@ -738,6 +839,8 @@ export function registerSocketHandlers(io: Server) {
         chatSeq: 0,
         lastChatAt: new Map(),
         timerSettings: { ...DEFAULT_TIMER_SETTINGS },
+        forfeitedNames: new Set(),
+        pendingForfeits: new Map(),
       };
       rooms.set(code, room);
       socket.join(code);
@@ -763,12 +866,24 @@ export function registerSocketHandlers(io: Server) {
       room.emptySince = undefined;
 
       if (room.phase !== "lobby") {
+        if (room.forfeitedNames.has(name.toLowerCase())) {
+          socket.emit("room-error", { message: "You left this game and cannot rejoin." });
+          return;
+        }
+
         const disconnected = Array.from(room.players.values()).find(
           (p) => !p.connected && p.name.toLowerCase() === name.toLowerCase(),
         );
 
         if (!disconnected) {
           socket.emit("room-error", { message: "This game has already started." });
+          return;
+        }
+
+        // Cancel a pending forfeit only if this seat was a soft drop (not intentional leave).
+        const pending = room.pendingForfeits.get(disconnected.id);
+        if (pending) {
+          socket.emit("room-error", { message: "You left this game and cannot rejoin." });
           return;
         }
 
@@ -794,10 +909,9 @@ export function registerSocketHandlers(io: Server) {
           mafiaIds: disconnected.role === "mafia" ? mafiaIds : [],
         });
 
-        // Send players-updated individually to each player with their own viewerId
-        for (const p of room.players.values()) {
-          io.to(p.id).emit("players-updated", { players: serializePlayers(room.players, false, p.id) });
-        }
+        socket.emit("chat-history", { messages: room.chatMessages });
+        io.to(code).emit("player-rejoined", { name: disconnected.name });
+        emitPlayersUpdated(io, code, room);
         logger.info({ code, name }, "Player reconnected");
         return;
       }
@@ -888,6 +1002,7 @@ export function registerSocketHandlers(io: Server) {
         if (!player.isHost || room.phase !== "game-over") return;
 
         clearRoomTimer(room);
+        clearPendingForfeits(room);
         room.phase = "lobby";
         room.nightVotes = new Map();
         room.dayVotes = new Map();
@@ -897,6 +1012,7 @@ export function registerSocketHandlers(io: Server) {
         room.pendingNarration = "";
         clearDayChat(room);
         room.chatReports = [];
+        room.forfeitedNames = new Set();
 
         for (const [id, p] of room.players.entries()) {
           if (!p.connected) room.players.delete(id);
@@ -917,12 +1033,8 @@ export function registerSocketHandlers(io: Server) {
       for (const [code, room] of rooms.entries()) {
         const player = room.players.get(socket.id);
         if (!player) continue;
-        if (room.phase !== "day-discussion" && room.phase !== "day-vote") {
-          socket.emit("room-error", { message: "Chat is only open during the day." });
-          return;
-        }
-        if (!player.alive) {
-          socket.emit("room-error", { message: "Eliminated players cannot send messages." });
+        if (!player.connected) {
+          socket.emit("room-error", { message: "Reconnect to send chat." });
           return;
         }
         const text = (data?.text ?? "").trim();
@@ -942,6 +1054,38 @@ export function registerSocketHandlers(io: Server) {
         room.chatMessages.push(message);
         emitChatMessage(io, room, message);
         logger.info({ code, name: player.name }, "Chat message");
+        return;
+      }
+    });
+
+    socket.on("leave-game", () => {
+      for (const [code, room] of rooms.entries()) {
+        const player = room.players.get(socket.id);
+        if (!player) continue;
+
+        if (room.phase === "lobby" || room.phase === "game-over") {
+          socket.emit("room-error", { message: "Leave is only available during a match." });
+          return;
+        }
+        if (room.pendingForfeits.has(socket.id) || room.forfeitedNames.has(player.name.toLowerCase())) {
+          socket.emit("left-game");
+          return;
+        }
+
+        const playerId = socket.id;
+        const name = player.name;
+        room.forfeitedNames.add(name.toLowerCase());
+        player.connected = false;
+        clearPlayerActions(room, playerId);
+        maybeAdvanceNightAfterAbsence(io, code, room);
+        emitPlayersUpdated(io, code, room);
+
+        const grace = setTimeout(() => applyForfeit(io, code, playerId), TIMERS.FORFEIT_GRACE);
+        room.pendingForfeits.set(playerId, grace);
+
+        void socket.leave(code);
+        socket.emit("left-game");
+        logger.info({ code, name }, "Player leave started — forfeit after grace");
         return;
       }
     });

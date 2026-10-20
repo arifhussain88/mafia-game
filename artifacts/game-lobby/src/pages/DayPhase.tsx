@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Player, Role } from "@/App";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useCircleSize } from "@/hooks/useCircleSize";
@@ -16,10 +16,6 @@ type Props = {
   myDayVote: string | null;
   narration: string | null;
   detectiveResult: { targetName: string; isMafia: boolean } | null;
-  chatMessages: { id: string; name: string; text: string }[];
-  onSendChat: (text: string) => void;
-  onReportChat: (id: string) => void;
-  onBlockPlayer: (name: string) => void;
   onDayVote: (targetId: string) => void;
 };
 
@@ -35,10 +31,6 @@ export default function DayPhase({
   myDayVote,
   narration,
   detectiveResult,
-  chatMessages,
-  onSendChat,
-  onReportChat,
-  onBlockPlayer,
   onDayVote,
 }: Props) {
   const countdown = useCountdown(timerEndsAt);
@@ -56,7 +48,6 @@ export default function DayPhase({
   const me = players.find((p) => p.id === mySocketId);
   const amAlive = me?.alive ?? false;
   const isVoting = subPhase === "day-vote";
-  const [draft, setDraft] = useState("");
 
   const actionMode: ActionMode = isVoting && amAlive ? "day-vote" : "none";
 
@@ -147,64 +138,6 @@ export default function DayPhase({
           <p className="text-gray-700 text-xs md:text-sm">
             {countdown > 20 ? "Discuss with your team." : "Voting begins soon…"}
           </p>
-        )}
-      </div>
-
-      <div className="game-panel w-full max-w-sm md:max-w-lg mt-4 px-3 py-3">
-        <div className="max-h-32 overflow-y-auto rounded-xl bg-black/30 border border-white/5 px-3 py-2 flex flex-col gap-2">
-          {chatMessages.length === 0 ? (
-            <p className="text-gray-600 text-xs">No messages yet.</p>
-          ) : (
-            chatMessages.map((message) => (
-              <div key={message.id} className="flex items-start justify-between gap-2">
-                <p className="text-sm text-gray-200 break-words min-w-0">
-                  <span className="font-semibold text-amber-200">{message.name}: </span>
-                  {message.text}
-                </p>
-                {message.name !== me?.name && (
-                  <div className="flex shrink-0 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onReportChat(message.id)}
-                      className="text-[10px] uppercase tracking-wide text-amber-700/80 hover:text-amber-500 cursor-pointer"
-                    >
-                      Report
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onBlockPlayer(message.name)}
-                      className="text-[10px] uppercase tracking-wide text-gray-500 hover:text-red-400 cursor-pointer"
-                    >
-                      Block
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-        {amAlive && (
-          <form
-            className="mt-2 flex gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const text = draft.trim();
-              if (!text) return;
-              onSendChat(text);
-              setDraft("");
-            }}
-          >
-            <input
-              value={draft}
-              maxLength={200}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Say something to the town"
-              className="flex-1 min-h-[44px] px-3 rounded-xl bg-gray-900 border border-gray-700 text-white text-sm"
-            />
-            <button type="submit" className="min-h-[44px] px-4 rounded-xl bg-amber-700 text-white text-sm font-semibold cursor-pointer">
-              Send
-            </button>
-          </form>
         )}
       </div>
     </div>
