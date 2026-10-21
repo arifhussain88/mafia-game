@@ -51,6 +51,8 @@ artifacts/api-server/data/users.json
 .env
 .env.*
 !.env.example
+.oracle_ssh_passphrase
+.oracle_ssh_askpass.cmd
 
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md

@@ -1,0 +1,17 @@
+---
+description: Commit message trailers — use owner Co-authored-by, never Cursor agent
+alwaysApply: true
+---
+
+# Git commit trailers
+
+When creating commits in this repo:
+
+1. Do **not** add `Co-authored-by: Cursor <cursoragent@cursor.com>`.
+2. End every commit message with this trailer (blank line before it):
+
+```
+Co-authored-by: Sayed Arif <87037121+arifhussain88@users.noreply.github.com>
+```
+
+3. Never commit secrets: `.env`, `.oracle_ssh_passphrase`, `.oracle_ssh_askpass.cmd`, `deploy/oracle/mafia-wars.env`, or any passphrase/API key files.

@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { Server as SocketIOServer } from "socket.io";
+import { hasDatabaseUrl } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { registerSocketHandlers } from "./socket-handlers";
@@ -26,5 +27,6 @@ const io = new SocketIOServer(httpServer, {
 registerSocketHandlers(io);
 
 httpServer.listen(port, "0.0.0.0", () => {
-  logger.info({ port, host: "0.0.0.0" }, "Server listening");
+  const authStore = hasDatabaseUrl() ? "neon" : "json";
+  logger.info({ port, host: "0.0.0.0", authStore }, "Server listening");
 });

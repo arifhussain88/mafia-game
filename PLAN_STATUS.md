@@ -15,16 +15,12 @@ Build the current plan, then the next one. Do not start a later plan early.
 - [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — implemented locally (host timers, 3D cards, detective Mafia flip). Mark done and merge into `feature/done-live` when you say so; deploy to Oracle from that branch
 - [x] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md) — was on Fly; superseded by Oracle host above
 - [x] [Oracle Always Free cutover](file:///C:/Users/ArifH/.cursor/plans/oracle_always_free_cutover_385545c1.plan.md) — verified on Oracle; public play at http://141.148.204.30/; Fly app destroyed
-
-## Next (separate)
-
 - [x] [Neon Free safe migrate](file:///C:/Users/ArifH/.cursor/plans/neon_free_safe_migrate_2400676a.plan.md) — Neon Free Postgres for accounts, profiles, match history, chat
-  - Project `mafia-wars` (`silent-firefly-22853615`) Free in **`aws-ap-southeast-1`**, 0.25 CU + Free quotas; org still Free
-  - `DATABASE_URL` on Oracle via `/etc/mafia-wars.env` (direct URL); no Neon API key on the VM
-  - One store: set → Neon; unset → `users.json`. Live rooms stay in memory; emit then async persist
+- [x] [Redeploy Neon live binary](file:///C:/Users/ArifH/.cursor/plans/redeploy_neon_live_binary_04ac4375.plan.md) — old pre-Neon `index.mjs` replaced; journal `authStore neon`; live signup lands in Neon not `users.json`
 
 ## Deferred
 
+- [ ] [Legal contact email update](file:///C:/Users/ArifH/.cursor/plans/legal_contact_email_update_558bd143.plan.md) — support mailbox + Oracle/Neon privacy wording (was blocked; Neon live save is fixed)
 - [ ] [Google ads revenue](file:///C:/Users/ArifH/.cursor/plans/google_ads_revenue_628e3cc9.plan.md)
   - After the game is stable on Oracle
   - One ad at game over, optional rewarded ad, no ads during a live match

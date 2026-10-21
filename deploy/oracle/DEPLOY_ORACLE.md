@@ -115,6 +115,8 @@ bash /tmp/remote-update.sh
 
 **Never** delete `/data/users.json` during an update.
 
+Updating only `mafia-wars.service` does **not** update `/opt/mafia-wars/index.mjs`. Neon support requires a release built from the Neon code path, then `remote-update.sh` (or a full extract into `/opt/mafia-wars`). When `/etc/mafia-wars.env` exists, `remote-update.sh` fails unless the new binary contains `DbUnavailableError`, the listener has `DATABASE_URL`, and the journal shows `authStore neon`.
+
 ### Neon `DATABASE_URL` (opt-in)
 
 On the VM only (direct endpoint host, **no** `-pooler` in the hostname):
