@@ -9,7 +9,7 @@ export type LegalDocumentId = 'privacy' | 'terms';
 const privacySections: LegalSection[] = [
   {
     paragraphs: [
-      'Effective date: 21 October 2026. Language: English.',
+      'Effective date: 22 October 2026. Language: English.',
       'This policy explains what information Mafia Wars collects, why it is collected, and how you can access or delete it. Mafia Wars is a free multiplayer social-deduction game. The mobile app and the website are offered to players worldwide. They are not aimed at any one country, and they are not directed at children under 13.',
       'The same rights in this policy are available to every player. Extra notes for particular regions are included only where local law asks us to be more specific. Those notes do not reduce the rights offered to everyone else.',
     ],
@@ -17,7 +17,7 @@ const privacySections: LegalSection[] = [
   {
     heading: 'Who we are',
     paragraphs: [
-      'Mafia Wars is published by Sayyed Muhammad Arif Hussain, an individual developer. For privacy requests, email mafiawars.support@proton.me. The developer lives in Pakistan. That is the place from which the game is operated. It is not a limit on who may play.',
+      'Mafia Wars is published by Sayyed Muhammad Arif Hussain, an individual developer. For privacy requests, email sayedarif.dev@proton.me. The developer lives in Pakistan. That is the place from which the game is operated. It is not a limit on who may play.',
     ],
   },
   {
@@ -78,7 +78,7 @@ const privacySections: LegalSection[] = [
   {
     heading: 'Your rights',
     paragraphs: [
-      'Wherever you live, you may email mafiawars.support@proton.me from the address on the account to:',
+      'Wherever you live, you may email sayedarif.dev@proton.me from the address on the account to:',
     ],
     bullets: [
       'Ask for a copy of the account data we hold.',
@@ -121,7 +121,7 @@ const privacySections: LegalSection[] = [
   {
     heading: 'Age',
     paragraphs: [
-      'You must be at least 13 years old to create an account. If the law where you live sets a higher age for consenting to this kind of service, you must meet that higher age. The game is not directed to children under 13, and it is not part of a program for children. We do not knowingly collect personal information from a child under 13. If you believe we have, email mafiawars.support@proton.me and we will delete it.',
+      'You must be at least 13 years old to create an account. If the law where you live sets a higher age for consenting to this kind of service, you must meet that higher age. The game is not directed to children under 13, and it is not part of a program for children. We do not knowingly collect personal information from a child under 13. If you believe we have, email sayedarif.dev@proton.me and we will delete it.',
     ],
   },
   {
@@ -138,14 +138,14 @@ const privacySections: LegalSection[] = [
   },
   {
     heading: 'Contact',
-    paragraphs: ['Sayyed Muhammad Arif Hussain, Pakistan. mafiawars.support@proton.me'],
+    paragraphs: ['Sayyed Muhammad Arif Hussain, Pakistan. sayedarif.dev@proton.me'],
   },
 ];
 
 const termsSections: LegalSection[] = [
   {
     paragraphs: [
-      'Effective date: 21 October 2026. Language: English.',
+      'Effective date: 22 October 2026. Language: English.',
       'These terms are an agreement between you and Sayyed Muhammad Arif Hussain (“we”, “us”) for the Mafia Wars mobile app and website. The game is offered worldwide. By creating an account, or by accepting these terms, you agree to them and to the Privacy Policy. If a translation of these terms is ever published, the English text controls.',
     ],
   },
@@ -164,8 +164,8 @@ const termsSections: LegalSection[] = [
   {
     heading: 'Your account',
     paragraphs: [
-      'Keep your password private. Tell us at mafiawars.support@proton.me if you believe someone else is using your account. We may refuse a display name, reset a room, or close an account that breaks these terms.',
-      'To delete an account, email mafiawars.support@proton.me from the address on the account with the subject “Mafia Wars account deletion”. We will delete the personal information described in the Privacy Policy within 30 days. Removing the app from your device does not delete the account.',
+      'Keep your password private. Tell us at sayedarif.dev@proton.me if you believe someone else is using your account. We may refuse a display name, reset a room, or close an account that breaks these terms.',
+      'To delete an account, email sayedarif.dev@proton.me from the address on the account with the subject “Mafia Wars account deletion”. We will delete the personal information described in the Privacy Policy within 30 days. Removing the app from your device does not delete the account.',
     ],
   },
   {
@@ -219,7 +219,7 @@ const termsSections: LegalSection[] = [
   {
     heading: 'Disputes',
     paragraphs: [
-      'If you have a problem with the game, email mafiawars.support@proton.me first and give us a reasonable chance to resolve it. These terms do not require arbitration, and they do not waive any right to bring a claim with other people where the law gives you that right.',
+      'If you have a problem with the game, email sayedarif.dev@proton.me first and give us a reasonable chance to resolve it. These terms do not require arbitration, and they do not waive any right to bring a claim with other people where the law gives you that right.',
       'The contract law of Pakistan governs these terms, because that is where the developer lives and operates the service. This choice does not override a mandatory consumer-protection right in the country where you live. If such a right conflicts with these terms, that right controls. You may also use any court or procedure that the law of your country says we cannot take away from you.',
     ],
   },
@@ -237,7 +237,7 @@ const termsSections: LegalSection[] = [
   },
   {
     heading: 'Contact',
-    paragraphs: ['Sayyed Muhammad Arif Hussain, Pakistan. mafiawars.support@proton.me'],
+    paragraphs: ['Sayyed Muhammad Arif Hussain, Pakistan. sayedarif.dev@proton.me'],
   },
 ];
 

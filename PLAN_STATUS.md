@@ -20,7 +20,7 @@ Build the current plan, then the next one. Do not start a later plan early.
 
 ## Deferred
 
-- [ ] [Legal contact email update](file:///C:/Users/ArifH/.cursor/plans/legal_contact_email_update_558bd143.plan.md) — support mailbox + Oracle/Neon privacy wording (was blocked; Neon live save is fixed)
+- [x] [Game support mailbox](file:///C:/Users/ArifH/.cursor/plans/game_support_mailbox_79f8eeb7.plan.md) — public contact is `sayedarif.dev@proton.me` (replaced banned `mafiawars.support@`); effective date 22 Oct 2026
 - [ ] [Google ads revenue](file:///C:/Users/ArifH/.cursor/plans/google_ads_revenue_628e3cc9.plan.md)
   - After the game is stable on Oracle
   - One ad at game over, optional rewarded ad, no ads during a live match
