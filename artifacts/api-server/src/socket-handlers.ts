@@ -679,6 +679,7 @@ function resolveDay(io: Server, code: string) {
       target.alive = false;
       eliminatedName = target.name;
     }
+    io.to(code).emit("mafia-kill-sound");
   }
 
   io.to(code).emit("day-result", {
@@ -1077,6 +1078,14 @@ export function registerSocketHandlers(io: Server) {
           socket.emit("room-error", { message: "Reconnect to send chat." });
           return;
         }
+        if (
+          room.phase !== "lobby" &&
+          room.phase !== "game-over" &&
+          !player.alive
+        ) {
+          socket.emit("room-error", { message: "Eliminated players can only watch chat." });
+          return;
+        }
         const text = (data?.text ?? "").trim();
         if (!text || text.length > 200) {
           socket.emit("room-error", { message: "Message must be 1 to 200 characters." });
@@ -1174,11 +1183,8 @@ export function registerSocketHandlers(io: Server) {
         const target = room.players.get(data.targetId);
         if (!target || !target.alive || target.role === "mafia") return;
 
-        const previous = room.nightVotes.get(socket.id);
         room.nightVotes.set(socket.id, data.targetId);
-        if (previous !== data.targetId) {
-          io.to(code).emit("mafia-kill-sound");
-        }
+        io.to(code).emit("mafia-kill-sound");
         broadcastNightVoteStatus(io, code);
 
         // Advance early when all connected mafia have voted — 2s pause before next step
@@ -1248,6 +1254,7 @@ export function registerSocketHandlers(io: Server) {
         const voter = room.players.get(socket.id);
         if (!voter) continue;
         if (room.phase !== "day-vote" || !voter.alive || data.targetId === socket.id) return;
+        if (room.dayVotes.has(socket.id)) return;
 
         const target = room.players.get(data.targetId);
         if (!target || !target.alive) return;

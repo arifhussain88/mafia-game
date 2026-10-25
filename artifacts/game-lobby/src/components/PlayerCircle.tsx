@@ -1,5 +1,6 @@
 import type { Role, Player } from "@/App";
 import RoleCard from "@/components/RoleCard";
+import { useIsNarrow } from "@/hooks/useIsNarrow";
 
 export type ActionMode =
   | "none"
@@ -48,6 +49,224 @@ const FELLOW_SHADOW = "0 0 10px rgba(239,68,68,0.3)";
 const FELLOW_BORDER = "#991b1b";
 
 const BASE_SIZE = 300;
+const STACK_CARD_W = 100;
+
+type SeatMetrics = {
+  cardW: number;
+  cardH: number;
+  nameFontSize: number;
+  offlineFontSize: number;
+  badgeSize: number;
+  badgeFontSize: number;
+  badgeOffset: number;
+  scale: number;
+};
+
+function PlayerSeat({
+  player,
+  mySocketId,
+  myRole,
+  mafiaIds,
+  selectedId,
+  actionMode,
+  onSelect,
+  isGameOver,
+  revealAll,
+  metrics,
+}: {
+  player: Player;
+  mySocketId: string;
+  myRole: Role | null;
+  mafiaIds: string[];
+  selectedId: string | null;
+  actionMode: ActionMode;
+  onSelect: (playerId: string) => void;
+  isGameOver: boolean;
+  revealAll?: boolean;
+  metrics: SeatMetrics;
+}) {
+  const {
+    cardW,
+    nameFontSize,
+    offlineFontSize,
+    badgeSize,
+    badgeFontSize,
+    badgeOffset,
+    scale,
+  } = metrics;
+
+  const isMe = player.id === mySocketId;
+  const eliminated = !player.alive;
+  const isFellow = !isMe && myRole === "mafia" && mafiaIds.includes(player.id);
+  const isSelected = selectedId === player.id;
+
+  let clickable = false;
+  if (!isGameOver && player.alive && actionMode !== "none") {
+    if (actionMode === "mafia-kill") clickable = !isMe && !mafiaIds.includes(player.id);
+    else if (actionMode === "doctor-protect") clickable = true;
+    else clickable = !isMe;
+  }
+
+  const roleToShow: Role | null = isMe
+    ? myRole
+    : isGameOver && player.role
+      ? player.role
+      : null;
+
+  const showFront = isGameOver ? (revealAll ?? false) : isMe;
+
+  // After day-vote lock, actionMode becomes "none" but selectedId remains — keep amber ring
+  const selectedBorder =
+    actionMode === "none" && isSelected ? SELECT_BORDER["day-vote"] : SELECT_BORDER[actionMode];
+  const selectedShadow =
+    actionMode === "none" && isSelected ? SELECT_SHADOW["day-vote"] : SELECT_SHADOW[actionMode];
+
+  const borderColor = isSelected
+    ? selectedBorder
+    : isFellow
+      ? FELLOW_BORDER
+      : "transparent";
+
+  const shadow = isSelected
+    ? selectedShadow
+    : isFellow
+      ? FELLOW_SHADOW
+      : "none";
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: Math.round(3 * scale),
+      }}
+    >
+      <button
+        type="button"
+        onClick={clickable ? () => onSelect(player.id) : undefined}
+        disabled={!clickable}
+        style={{
+          display: "block",
+          cursor: clickable ? "pointer" : "default",
+          background: "none",
+          border: "none",
+          padding: 0,
+          position: "relative",
+        }}
+        aria-label={`${player.name}${isMe ? " (you)" : ""}`}
+      >
+        <RoleCard
+          role={roleToShow}
+          flipped={showFront}
+          width={cardW}
+          animate={isGameOver}
+        />
+
+        {(isSelected || isFellow) && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: 10,
+              border: `2px solid ${borderColor}`,
+              boxShadow: shadow,
+              pointerEvents: "none",
+            }}
+          />
+        )}
+
+        {clickable && !isSelected && !isFellow && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: 10,
+              border: "2px solid transparent",
+              transition: "border-color 0.15s",
+              pointerEvents: "none",
+            }}
+            className="hover:border-gray-500"
+          />
+        )}
+
+        {eliminated && !isGameOver && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: 10,
+              background: "rgba(3,4,8,0.68)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 2,
+              pointerEvents: "none",
+            }}
+          >
+            <span style={{ color: "#4b5563", fontSize: Math.round(16 * scale), lineHeight: 1 }}>✕</span>
+          </div>
+        )}
+
+        {eliminated && isGameOver && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: 10,
+              background: "rgba(0,0,0,0.38)",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+
+        {isFellow && !isGameOver && (
+          <div
+            style={{
+              position: "absolute",
+              top: -badgeOffset,
+              right: -badgeOffset,
+              background: "#7f1d1d",
+              borderRadius: "50%",
+              width: badgeSize,
+              height: badgeSize,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: badgeFontSize,
+              pointerEvents: "none",
+            }}
+          >
+            🔪
+          </div>
+        )}
+      </button>
+
+      <p
+        style={{
+          fontSize: nameFontSize,
+          fontWeight: 600,
+          color: isMe ? "#f3f4f6" : eliminated && !isGameOver ? "#4b5563" : "#9ca3af",
+          maxWidth: cardW,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          lineHeight: 1,
+          textDecoration: eliminated && !isGameOver ? "line-through" : "none",
+        }}
+      >
+        {player.name}{isMe ? " ★" : ""}
+      </p>
+
+      {!player.connected && !eliminated && (
+        <p style={{ fontSize: offlineFontSize, color: "#6b7280", lineHeight: 1, marginTop: -2 }}>
+          offline
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function PlayerCircle({
   players,
@@ -61,28 +280,65 @@ export default function PlayerCircle({
   circleSize = BASE_SIZE,
 }: Props) {
   const N = players.length;
+  const isNarrow = useIsNarrow();
   if (N === 0) return null;
+
+  const isGameOver = revealAll !== undefined;
+  const useStack = isNarrow;
+
+  if (useStack) {
+    const scale = STACK_CARD_W / 60;
+    const metrics: SeatMetrics = {
+      cardW: STACK_CARD_W,
+      cardH: Math.round(STACK_CARD_W * (168 / 120)),
+      nameFontSize: 12,
+      offlineFontSize: 10,
+      badgeSize: 18,
+      badgeFontSize: 10,
+      badgeOffset: 6,
+      scale,
+    };
+
+    return (
+      <div
+        className="w-full max-w-sm flex flex-col items-center gap-4 overflow-y-auto select-none px-2"
+        style={{ maxHeight: "58vh" }}
+        aria-label="Players"
+      >
+        {players.map((player) => (
+          <PlayerSeat
+            key={player.id}
+            player={player}
+            mySocketId={mySocketId}
+            myRole={myRole}
+            mafiaIds={mafiaIds}
+            selectedId={selectedId}
+            actionMode={actionMode}
+            onSelect={onSelect}
+            isGameOver={isGameOver}
+            revealAll={revealAll}
+            metrics={metrics}
+          />
+        ))}
+      </div>
+    );
+  }
 
   const scale = circleSize / BASE_SIZE;
   const { w: baseCardW, radiusPct } = getCardMetrics(N);
   const cardW = Math.round(baseCardW * scale);
-  const cardH = Math.round(cardW * (168 / 120));
-  const nameFontSize = Math.max(7, Math.round(8 * scale));
-  const offlineFontSize = Math.max(6, Math.round(7 * scale));
-  const badgeSize = Math.round(16 * scale);
-  const badgeFontSize = Math.round(9 * scale);
-  const badgeOffset = Math.round(6 * scale);
-  const isGameOver = revealAll !== undefined;
+  const metrics: SeatMetrics = {
+    cardW,
+    cardH: Math.round(cardW * (168 / 120)),
+    nameFontSize: Math.max(7, Math.round(8 * scale)),
+    offlineFontSize: Math.max(6, Math.round(7 * scale)),
+    badgeSize: Math.round(16 * scale),
+    badgeFontSize: Math.round(9 * scale),
+    badgeOffset: Math.round(6 * scale),
+    scale,
+  };
 
   const myIndex = players.findIndex((p) => p.id === mySocketId);
-
-  function canClick(player: Player): boolean {
-    if (isGameOver || !player.alive || actionMode === "none") return false;
-    const isMe = player.id === mySocketId;
-    if (actionMode === "mafia-kill") return !isMe && !mafiaIds.includes(player.id);
-    if (actionMode === "doctor-protect") return true;
-    return !isMe;
-  }
 
   return (
     <div
@@ -95,32 +351,7 @@ export default function PlayerCircle({
         const angle = Math.PI / 2 + (offset * 2 * Math.PI) / N;
         const xPct = 50 + radiusPct * Math.cos(angle);
         const yPct = 50 + radiusPct * Math.sin(angle);
-
-        const isMe       = player.id === mySocketId;
-        const eliminated = !player.alive;
-        const isFellow   = !isMe && myRole === "mafia" && mafiaIds.includes(player.id);
-        const isSelected = selectedId === player.id;
-        const clickable  = canClick(player);
-
-        const roleToShow: Role | null = isMe
-          ? myRole
-          : isGameOver && player.role
-          ? player.role
-          : null;
-
-        const showFront = isGameOver ? (revealAll ?? false) : isMe;
-
-        const borderColor = isSelected
-          ? SELECT_BORDER[actionMode]
-          : isFellow
-          ? FELLOW_BORDER
-          : "transparent";
-
-        const shadow = isSelected
-          ? SELECT_SHADOW[actionMode]
-          : isFellow
-          ? FELLOW_SHADOW
-          : "none";
+        const isMe = player.id === mySocketId;
 
         return (
           <div
@@ -131,138 +362,24 @@ export default function PlayerCircle({
               top: `${yPct}%`,
               transform: "translate(-50%, -50%)",
               zIndex: isMe ? 2 : 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: Math.round(3 * scale),
             }}
           >
-            {/* Card with overlays */}
-            <button
-              onClick={clickable ? () => onSelect(player.id) : undefined}
-              disabled={!clickable}
-              style={{ display: "block", cursor: clickable ? "pointer" : "default", background: "none", border: "none", padding: 0, position: "relative" }}
-              aria-label={`${player.name}${isMe ? " (you)" : ""}`}
-            >
-              {/* 3D Flip card */}
-              <RoleCard
-                role={roleToShow}
-                flipped={showFront}
-                width={cardW}
-                animate={isGameOver}
-              />
-
-              {/* Selection / fellow ring overlay */}
-              {(isSelected || isFellow) && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: 10,
-                    border: `2px solid ${borderColor}`,
-                    boxShadow: shadow,
-                    pointerEvents: "none",
-                  }}
-                />
-              )}
-
-              {/* Clickable hover ring (shown via CSS class) */}
-              {clickable && !isSelected && !isFellow && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: 10,
-                    border: "2px solid transparent",
-                    transition: "border-color 0.15s",
-                    pointerEvents: "none",
-                  }}
-                  className="hover:border-gray-500"
-                />
-              )}
-
-              {/* Eliminated overlay — during game: grey scrim + X */}
-              {eliminated && !isGameOver && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: 10,
-                    background: "rgba(3,4,8,0.68)",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 2,
-                    pointerEvents: "none",
-                  }}
-                >
-                  <span style={{ color: "#4b5563", fontSize: Math.round(16 * scale), lineHeight: 1 }}>✕</span>
-                </div>
-              )}
-
-              {/* Eliminated overlay — game over: subtle dark tint to show deceased */}
-              {eliminated && isGameOver && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: 10,
-                    background: "rgba(0,0,0,0.38)",
-                    pointerEvents: "none",
-                  }}
-                />
-              )}
-
-              {/* Fellow mafia dagger badge */}
-              {isFellow && !isGameOver && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: -badgeOffset,
-                    right: -badgeOffset,
-                    background: "#7f1d1d",
-                    borderRadius: "50%",
-                    width: badgeSize,
-                    height: badgeSize,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: badgeFontSize,
-                    pointerEvents: "none",
-                  }}
-                >
-                  🔪
-                </div>
-              )}
-            </button>
-
-            {/* Name label below card */}
-            <p
-              style={{
-                fontSize: nameFontSize,
-                fontWeight: 600,
-                color: isMe ? "#f3f4f6" : eliminated && !isGameOver ? "#4b5563" : "#9ca3af",
-                maxWidth: cardW,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                lineHeight: 1,
-                textDecoration: eliminated && !isGameOver ? "line-through" : "none",
-              }}
-            >
-              {player.name}{isMe ? " ★" : ""}
-            </p>
-
-            {/* Offline indicator */}
-            {!player.connected && !eliminated && (
-              <p style={{ fontSize: offlineFontSize, color: "#6b7280", lineHeight: 1, marginTop: -2 }}>offline</p>
-            )}
+            <PlayerSeat
+              player={player}
+              mySocketId={mySocketId}
+              myRole={myRole}
+              mafiaIds={mafiaIds}
+              selectedId={selectedId}
+              actionMode={actionMode}
+              onSelect={onSelect}
+              isGameOver={isGameOver}
+              revealAll={revealAll}
+              metrics={metrics}
+            />
           </div>
         );
       })}
 
-      {/* Table surface hint */}
       <div
         className="absolute rounded-full border border-gray-800/40 pointer-events-none"
         style={{

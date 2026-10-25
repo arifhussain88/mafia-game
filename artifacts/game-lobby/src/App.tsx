@@ -451,7 +451,13 @@ export default function App() {
   const castNightVote       = useCallback((id: string) => { setMyNightVote(id); socketRef.current?.emit("night-vote", { targetId: id }); }, []);
   const castDoctorProtect   = useCallback((id: string) => { socketRef.current?.emit("doctor-protect", { targetId: id }); }, []);
   const castDetectiveInvest = useCallback((id: string) => { socketRef.current?.emit("detective-investigate", { targetId: id }); }, []);
-  const castDayVote         = useCallback((id: string) => { setMyDayVote(id); socketRef.current?.emit("day-vote", { targetId: id }); }, []);
+  const castDayVote = useCallback((id: string) => {
+    setMyDayVote((prev) => {
+      if (prev) return prev;
+      socketRef.current?.emit("day-vote", { targetId: id });
+      return id;
+    });
+  }, []);
   const sendChat            = useCallback((text: string) => { socketRef.current?.emit("send-chat", { text }); }, []);
   const reportChat          = useCallback((id: string) => {
     socketRef.current?.emit("report-chat", { id });
@@ -582,6 +588,11 @@ export default function App() {
         <RoomChat
           myName={myName}
           messages={chatMessages}
+          canSend={
+            phase === "lobby" ||
+            phase === "game-over" ||
+            (players.find((p) => p.id === mySocketId)?.alive ?? true)
+          }
           onSend={sendChat}
           onReport={reportChat}
           onBlock={blockPlayer}

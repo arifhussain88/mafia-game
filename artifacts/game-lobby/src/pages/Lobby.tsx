@@ -1,6 +1,39 @@
 import { useState } from "react";
+import { Check, Copy } from "lucide-react";
 import type { Player } from "@/App";
 import HowToPlay from "@/components/HowToPlay";
+
+function sanitizeRoomCode(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+async function copyText(text: string): Promise<boolean> {
+  if (!text) return false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through to execCommand */
+  }
+  try {
+    const input = document.createElement("textarea");
+    input.value = text;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.left = "-9999px";
+    input.style.top = "0";
+    document.body.appendChild(input);
+    input.select();
+    input.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(input);
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 const MIN_PLAYERS = 3;
 
@@ -98,11 +131,13 @@ export default function Lobby({
   const [kickConfirm, setKickConfirm] = useState<string | null>(null);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
 
-  function handleCopy() {
-    navigator.clipboard.writeText(roomCode).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+  async function handleCopy() {
+    const code = sanitizeRoomCode(roomCode);
+    if (!code) return;
+    const ok = await copyText(code);
+    if (!ok) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   function handleKick(targetId: string) {
@@ -127,27 +162,30 @@ export default function Lobby({
       <div className="game-panel w-full max-w-sm px-5 py-6">
 
         <div className="text-center mb-8">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Room Code</p>
+          <p className="text-xs font-semibold text-amber-600/90 uppercase tracking-widest mb-3">Room Code</p>
           <button
             type="button"
-            onClick={handleCopy}
+            onClick={() => void handleCopy()}
             className="inline-flex items-center gap-3 min-h-[64px] px-8 rounded-2xl bg-gray-900/80 hover:bg-gray-800 border border-gray-700 hover:border-amber-500/40 transition-colors group cursor-pointer"
             title="Tap to copy"
+            aria-label="Copy room code"
           >
-            <span className="text-4xl font-bold tracking-widest text-white font-mono">
+            <span className="text-4xl font-bold tracking-widest text-amber-100 font-mono">
               {roomCode}
             </span>
-            <span className="text-gray-500 group-hover:text-amber-400 transition-colors text-sm">
-              {copied ? "✓" : "⎘"}
-            </span>
+            {copied ? (
+              <Check className="h-5 w-5 text-amber-400 shrink-0" aria-hidden />
+            ) : (
+              <Copy className="h-5 w-5 text-gray-500 group-hover:text-amber-400 transition-colors shrink-0" aria-hidden />
+            )}
           </button>
-          <p className="text-gray-600 text-xs mt-2">Share this code — tap to copy</p>
+          <p className="text-gray-500 text-xs mt-2">Share this code — tap to copy</p>
         </div>
 
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-widest">Players</h2>
-            <span className="text-xs text-gray-600 font-mono">{players.length} joined</span>
+            <h2 className="text-xs font-semibold text-amber-600/90 uppercase tracking-widest">Players</h2>
+            <span className="text-xs text-gray-500 font-mono">{players.length} joined</span>
           </div>
 
           <div className="flex flex-col gap-2">

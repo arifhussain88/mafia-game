@@ -49,7 +49,8 @@ export default function DayPhase({
   const amAlive = me?.alive ?? false;
   const isVoting = subPhase === "day-vote";
 
-  const actionMode: ActionMode = isVoting && amAlive ? "day-vote" : "none";
+  // Lock circle after first cast — highlight stays via selectedId
+  const actionMode: ActionMode = isVoting && amAlive && !myDayVote ? "day-vote" : "none";
 
   const totalVotes = Object.values(dayVotes).reduce((a, b) => a + b, 0);
 
@@ -78,7 +79,7 @@ export default function DayPhase({
       <div className="w-full max-w-sm md:max-w-lg flex flex-col gap-3 mb-3 md:mb-5">
         {narration && (
           <div className="w-full px-4 py-3 rounded-xl bg-gray-900/70 border border-gray-700">
-            <p className="text-[10px] md:text-xs font-semibold text-gray-500 uppercase tracking-widest mb-1">Last Night</p>
+            <p className="text-[10px] md:text-xs font-semibold text-amber-600/90 uppercase tracking-widest mb-1">Last Night</p>
             <p className="text-gray-200 text-sm md:text-base leading-relaxed">{narration}</p>
           </div>
         )}
