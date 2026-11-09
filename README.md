@@ -96,7 +96,7 @@ Open **http://localhost:5173** in your browser. That's it — you're in!
 
 ## 🎮 How to Play
 
-### Minimum Players: **5**
+### Minimum Players: **3** (7+ adds a second Mafia)
 
 ### Game Flow
 
@@ -251,7 +251,6 @@ This instantly gives you a `https://xxxxx.trycloudflare.com` URL. Same proxy not
 ---
 
 ## 📁 Project Structure
-## 📁 Project Structure
 
 ```
 Mafia-Wars/
@@ -265,6 +264,10 @@ Mafia-Wars/
 │   │   │   └── lib/             # Logger, utilities
 │   │   ├── build.mjs            # esbuild config
 │   │   └── package.json
+│   │
+│   ├── mobile-app/              # Expo Android app: a WebView shell around the web game
+│   │   ├── App.tsx              # Back button, offline screen, external links
+│   │   └── app.config.js        # Game URL → Android cleartext on/off
 │   │
 │   └── game-lobby/              # React + Vite frontend
 │       ├── src/
@@ -295,6 +298,8 @@ Mafia-Wars/
 │   ├── api-spec/                 # OpenAPI specification
 │   ├── api-zod/                  # Zod validation schemas
 │   └── db/                       # Drizzle ORM / DB schema
+│
+├── deploy/oracle/                # Oracle Always Free VM: build, Caddy (HTTPS), systemd
 │
 ├── pnpm-workspace.yaml           # Monorepo workspace config
 ├── package.json                  # Root scripts

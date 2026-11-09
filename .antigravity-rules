@@ -147,7 +147,6 @@ Mafia-Wars/
 │   │   │   ├── hooks/           # useCountdown, useCircleSize, useToast
 │   │   │   └── lib/             # audio, utils (cn helper)
 │   │   └── vite.config.ts       # Proxy to API server
-│   └── mockup-sandbox/          # Design system preview
 └── lib/                         # Shared workspace packages
     ├── db/                      # Drizzle schema
     ├── api-zod/                 # Shared Zod schemas

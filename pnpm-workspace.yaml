@@ -16,7 +16,7 @@
 # passed (e.g. an urgent security bugfix), you can add it to the
 # `minimumReleaseAgeExclude` allowlist below. Only consider doing this for
 # packages released by trusted organizations with an impeccable security
-# posture (e.g. Replit packsges, react from Meta, typescript from Microsoft). Even then,
+# posture (e.g. react from Meta, typescript from Microsoft). Even then,
 # remove the exclusion once the 1-day window has passed.
 #
 # Example:
@@ -31,7 +31,6 @@ packages:
   - artifacts/*
   - lib/*
   - lib/integrations/*
-  - scripts
 
 catalog:
 
@@ -60,15 +59,15 @@ catalog:
 autoInstallPeers: false
 
 onlyBuiltDependencies:
-  - '@firebase/util'
   - '@swc/core'
   - esbuild
   - msw
-  - protobufjs
   - unrs-resolver
 
 overrides:
-  # replit uses linux-x64 only, we can exclude all other platforms
+  # Builds run on Windows (win32-x64); the Oracle VM only runs the prebuilt
+  # bundle. Skip native binaries for other platforms. If you ever build on
+  # macOS or Linux arm64, remove the matching lines below.
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
   "esbuild>@esbuild/freebsd-arm64": "-"
@@ -145,6 +144,4 @@ overrides:
   esbuild: "0.27.3"
 
 allowBuilds:
-  '@firebase/util': true
   esbuild: true
-  protobufjs: true
