@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+import { playVoteOutImpact } from "@/lib/audio";
+
 export type VoteTallyEntry = { voter: string; target: string | null };
 
 type Props = {
@@ -35,6 +38,11 @@ function VoteTally({ tally, eliminatedName }: { tally: VoteTallyEntry[]; elimina
 }
 
 export default function EliminationReveal({ eliminatedName, skipped, tally = [] }: Props) {
+  // The impact lands as the voted-out name appears (this screen mounts with it).
+  useEffect(() => {
+    if (eliminatedName && !skipped) playVoteOutImpact();
+  }, [eliminatedName, skipped]);
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="game-panel w-full max-w-sm px-6 py-8 text-center">

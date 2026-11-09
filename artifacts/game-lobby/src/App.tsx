@@ -17,7 +17,7 @@ import LeaveMatchButton from "@/components/LeaveMatchButton";
 import MatchTicker from "@/components/MatchTicker";
 import RoomChat, { type ChatMode, type ChatMessage } from "@/components/RoomChat";
 import { useBackHandler } from "@/lib/native-bridge";
-import { playNightSting, playDayChime, playMafiaKill, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
+import { playNightSting, playDayChime, playTargetLocked, preloadGunshot, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
 
@@ -50,6 +50,9 @@ function isActiveMatchPhase(phase: GamePhase): boolean {
 
 export type Winner = "mafia" | "civilians" | "draw";
 
+/** Who the Mafia hit last night, so the report fires its gunshot on the right word. */
+export type NightShot = { attacked: boolean; victimName: string | null };
+
 /** Remembered so a reconnect or page reload can put us back in our seat. */
 const ROOM_KEY = "mafia-room";
 function saveRoom(code: string) {
@@ -77,6 +80,7 @@ type RejoinSnapshot = {
   dayVotes: Record<string, number>;
   narration: string | null;
   nightSummaryLines: string[];
+  nightShot?: NightShot | null;
   dayResult: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; tally?: VoteTallyEntry[] } | null;
   detectiveResult: { targetName: string; isMafia: boolean } | null;
   winner: Winner | null;
@@ -122,6 +126,7 @@ export default function App() {
   } | null>(null);
 
   const [nightSummaryLines, setNightSummaryLines] = useState<string[]>([]);
+  const [nightShot, setNightShot] = useState<NightShot | null>(null);
 
   const [elimInfo, setElimInfo] = useState<{
     tally: VoteTallyEntry[];
@@ -218,6 +223,7 @@ export default function App() {
     const ambientActive = phase === "home" || phase === "lobby" || phase === "game-over";
     if (ambientActive && !isMuted()) {
       unlockAudio();
+    preloadGunshot();
       startAmbientLoop();
     } else {
       stopAmbientLoop();
@@ -228,6 +234,7 @@ export default function App() {
       const shouldStart = ambientActive && !detail;
       if (shouldStart) {
         unlockAudio();
+    preloadGunshot();
         startAmbientLoop();
       } else stopAmbientLoop();
     }
@@ -242,6 +249,7 @@ export default function App() {
 
     function unlockOnGesture() {
       unlockAudio();
+    preloadGunshot();
       if (!isMuted()) startAmbientLoop();
     }
 
@@ -428,6 +436,7 @@ export default function App() {
       setDayVotes(data.dayVotes ?? {});
       setDayNarration(data.narration);
       setNightSummaryLines(data.nightSummaryLines ?? []);
+      setNightShot(data.nightShot ?? null);
       setDetectiveResult(data.detectiveResult);
       if (data.dayResult) {
         setElimInfo({ name: data.dayResult.eliminatedName, skipped: data.dayResult.skipped, tally: data.dayResult.tally ?? [], phase: "day-result" });
@@ -460,16 +469,13 @@ export default function App() {
 
     socket.on(
       "night-summary",
-      (data: { lines: string[]; eliminatedId: string | null; players: Player[] }) => {
+      (data: { lines: string[]; eliminatedId: string | null; attacked?: boolean; victimName?: string | null; players: Player[] }) => {
         setNightSummaryLines(data.lines);
+        setNightShot({ attacked: Boolean(data.attacked), victimName: data.victimName ?? null });
         setPlayers(data.players);
         setPhase("night-summary");
       },
     );
-
-    socket.on("mafia-kill-sound", () => {
-      playMafiaKill();
-    });
 
     socket.on("day-vote-update", (data: { votes: Record<string, number> }) => {
       setDayVotes(data.votes);
@@ -526,12 +532,14 @@ export default function App() {
 
   const createRoom = useCallback((name: string) => {
     unlockAudio();
+    preloadGunshot();
     setMyName(name);
     socketRef.current?.emit("create-room", { name });
   }, []);
 
   const joinRoom = useCallback((code: string, name: string) => {
     unlockAudio();
+    preloadGunshot();
     setMyName(name);
     socketRef.current?.emit("join-room", { code, name });
   }, []);
@@ -546,7 +554,11 @@ export default function App() {
     setTimerSettings(next);
     socketRef.current?.emit("set-timer-settings", next);
   }, []);
-  const castNightVote       = useCallback((id: string) => { setMyNightVote(id); socketRef.current?.emit("night-vote", { targetId: id }); }, []);
+  const castNightVote       = useCallback((id: string) => {
+    setMyNightVote(id);
+    playTargetLocked();
+    socketRef.current?.emit("night-vote", { targetId: id });
+  }, []);
   const castDoctorProtect   = useCallback((id: string) => { socketRef.current?.emit("doctor-protect", { targetId: id }); }, []);
   const castDetectiveInvest = useCallback((id: string) => { socketRef.current?.emit("detective-investigate", { targetId: id }); }, []);
   const castDayVote = useCallback((id: string) => {
@@ -608,6 +620,7 @@ export default function App() {
           onAuthenticated={() => {
             setIsAuthenticated(true);
             unlockAudio();
+    preloadGunshot();
             if (!isMuted()) startAmbientLoop();
           }}
           onLogout={() => {
@@ -659,7 +672,7 @@ export default function App() {
       )}
 
       {phase === "night-summary" && (
-        <NightSummary lines={nightSummaryLines} />
+        <NightSummary lines={nightSummaryLines} shot={nightShot} />
       )}
 
       {phase === "day-result" && elimInfo && (

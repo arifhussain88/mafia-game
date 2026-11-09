@@ -219,6 +219,7 @@ interface Room {
   /** Snapshot pieces so a rejoining player sees what everyone else sees. */
   dayNarration: string;
   nightSummaryLines: string[];
+  nightShot: { attacked: boolean; victimName: string | null } | null;
   lastDayResult: {
     eliminatedId: string | null;
     eliminatedName: string | null;
@@ -570,6 +571,7 @@ function startMatchCountdown(io: Server, code: string) {
   room.nightHadDeath = false;
   room.dayNarration = "";
   room.nightSummaryLines = [];
+  room.nightShot = null;
   room.lastDayResult = null;
   room.detectiveResult = null;
   const endsAt = Date.now() + TIMERS.MATCH_COUNTDOWN;
@@ -627,6 +629,7 @@ function startNightMafia(io: Server, code: string) {
   room.detectiveInvestigate = new Map();
   room.detectiveResult = null;
   room.nightSummaryLines = [];
+  room.nightShot = null;
 
   const connectedMafia = connectedLivingMafia(room);
   const duration = connectedMafia.length > 0 ? nightStepMs(room) : Math.floor(Math.random() * 3000) + 5000;
@@ -744,6 +747,9 @@ function resolveNight(io: Server, code: string) {
 
   const lines = buildNightSummaryLines(mafiaTargetId, eliminatedName, wasProtected);
   room.nightSummaryLines = lines;
+  // The client fires the gunshot on the exact character of the victim's name
+  // (or of "attacked" when the Doctor saved them), in sync with the typing.
+  room.nightShot = { attacked: mafiaTargetId !== null, victimName: eliminatedName };
   room.nightHadDeath = eliminatedName !== null;
 
   // Auto-advance to day after typewriter finishes + 3s pause
@@ -754,6 +760,8 @@ function resolveNight(io: Server, code: string) {
   io.to(code).emit("night-summary", {
     lines,
     eliminatedId,
+    attacked: mafiaTargetId !== null,
+    victimName: eliminatedName,
     players: serializePlayers(room.players),
   });
 
@@ -861,7 +869,6 @@ function resolveDay(io: Server, code: string) {
       target.alive = false;
       eliminatedName = target.name;
     }
-    io.to(code).emit("mafia-kill-sound");
   }
 
   room.lastDayResult = { eliminatedId, eliminatedName, skipped, tally };
@@ -1067,6 +1074,7 @@ function sendRejoinSnapshot(io: Server, socket: Socket, code: string, room: Room
     dayVotes: dayVoteCounts(room),
     narration: room.dayNarration || null,
     nightSummaryLines: room.nightSummaryLines,
+    nightShot: room.nightShot,
     dayResult: room.phase === "day-result" ? room.lastDayResult : null,
     detectiveResult:
       isDetective && room.detectiveResult?.detectiveId === id
@@ -1223,6 +1231,7 @@ function newRoom(code: string, host: Player): Room {
     lobbyGrace: new Map(),
     dayNarration: "",
     nightSummaryLines: [],
+    nightShot: null,
     lastDayResult: null,
     detectiveResult: null,
     winner: null,
@@ -1688,7 +1697,6 @@ export function registerSocketHandlers(io: Server) {
         if (!target || !target.alive || target.role === "mafia") return;
 
         room.nightVotes.set(socket.id, targetId);
-        io.to(code).emit("mafia-kill-sound");
         broadcastNightVoteStatus(io, code);
 
         // Advance early when all connected mafia have voted — 2s pause before next step

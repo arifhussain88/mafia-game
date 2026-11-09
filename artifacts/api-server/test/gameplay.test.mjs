@@ -160,10 +160,15 @@ describe("table rules and chat channels", () => {
       // Mafia kills the Civilian; Doctor saves themself; Detective checks the Mafia.
       Mafia.emit("night-vote", { targetId: Civilian.id });
       await waitFor(Doctor, "game-phase", (d) => d.phase === "night-doctor");
+      // No sound reaches anyone when the Mafia pick (it used to tip off the town).
+      for (const s of all) assert.equal(received(s, "mafia-kill-sound").length, 0);
       Doctor.emit("doctor-protect", { targetId: Doctor.id });
       await waitFor(Detective, "game-phase", (d) => d.phase === "night-detective");
       Detective.emit("detective-investigate", { targetId: Mafia.id });
-      await waitFor(Civilian, "night-summary");
+      const summary = await waitFor(Civilian, "night-summary");
+      assert.equal(summary.attacked, true);
+      assert.equal(summary.victimName, "Civilian", "report names the victim so the gunshot lands on it");
+      assert.ok(summary.lines.some((l) => l.includes("Civilian")));
 
       // The dead Civilian talks in ghost chat; the living don't see it.
       clearEvents(...all);
