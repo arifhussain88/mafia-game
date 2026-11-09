@@ -9,14 +9,24 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// Caddy reverse-proxies from 127.0.0.1, so trust only the loopback hop.
+// req.ip is then the real client IP and X-Forwarded-For cannot be spoofed by clients.
+app.set("trust proxy", "loopback");
+app.disable("x-powered-by");
+
+// The web client is served from this same origin; only enable CORS when an
+// explicit origin is configured (e.g. a separate frontend host).
 const corsOrigin = process.env.CORS_ORIGIN;
-app.use(
-  cors(
-    corsOrigin
-      ? { origin: corsOrigin, credentials: true }
-      : undefined,
-  ),
-);
+if (corsOrigin) {
+  app.use(cors({ origin: corsOrigin.split(",").map((o) => o.trim()), credentials: true }));
+}
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  next();
+});
 
 app.use(
   pinoHttp({
@@ -38,51 +48,19 @@ app.use(
   }),
 );
 
-app.use(express.json({ verify: (req: any, _res, buf: Buffer) => { try { req.rawBody = buf && buf.toString(); } catch {} } }));
-app.use(express.urlencoded({ extended: true }));
-
-app.use((req: any, _res, next) => {
-  try {
-    const ct = String(req.headers["content-type"] || "").toLowerCase();
-    const hasJsonCt = ct.includes("application/json");
-    const bodyEmpty = !req.body || (Object.keys(req.body).length === 0 && req.body.constructor === Object);
-    if (hasJsonCt && bodyEmpty && req.rawBody) {
-      const raw = String(req.rawBody || "").trim();
-      if (raw) {
-        try {
-          req.body = JSON.parse(raw);
-          return next();
-        } catch (_) {
-          try {
-            if (raw.startsWith("{") && raw.endsWith("}")) {
-              let s = raw;
-              s = s.replace(/([,{]\s*)([A-Za-z0-9_@.\-]+)\s*:/g, '$1"$2":');
-              s = s.replace(/:\s*([A-Za-z0-9_@.\-]+)(?=[,}\s])/g, ':"$1"');
-              req.body = JSON.parse(s);
-              try { logger.info({ repaired: s }, "Repaired malformed JSON payload"); } catch {}
-              return next();
-            }
-          } catch (e2) {
-            try { logger.warn({ rawBody: raw, err: String(e2 instanceof Error ? e2.message : e2) }, "Failed tolerant JSON repair"); } catch {}
-          }
-        }
-      }
-    }
-  } catch (e) {
-    try { logger.warn({ err: String(e instanceof Error ? e.message : e) }, "Error in JSON repair middleware"); } catch {}
-  }
-  return next();
-});
+app.use(express.json({ limit: "16kb" }));
+app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 
 app.use("/api/auth", authRouter);
 app.use("/api", healthRouter);
 
 app.use((err: any, req: any, res: any, next: any) => {
   if (!err) return next();
-  const isBodyParser = err && (err.type === "entity.parse.failed" || err instanceof SyntaxError || err.name === "SyntaxError");
+  const isBodyParser = err && (err.type === "entity.parse.failed" || err.type === "entity.too.large" || err instanceof SyntaxError || err.name === "SyntaxError");
   if (isBodyParser) {
-    try { logger.warn({ rawBody: req.rawBody, err: String(err?.message ?? err) }, "Invalid JSON payload received"); } catch {}
-    return res.status(400).json({ message: "Invalid JSON payload" });
+    // Never log the body: it can contain passwords.
+    logger.warn({ path: req.path }, "Invalid JSON payload received");
+    return res.status(err.type === "entity.too.large" ? 413 : 400).json({ message: "Invalid request body" });
   }
   return next(err);
 });

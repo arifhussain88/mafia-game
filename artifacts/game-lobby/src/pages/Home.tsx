@@ -39,6 +39,9 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
     try { return JSON.parse(localStorage.getItem("mafia-user") || "null"); } catch { return null; }
   });
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePass, setDeletePass] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   function handleCreate() {
     const trimmed = name.trim();
@@ -129,6 +132,39 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
     }
   }
 
+  async function handleDeleteAccount() {
+    setError("");
+    if (!deletePass) { setError("Enter your password to confirm"); return; }
+    let token: string | null = null;
+    try { token = localStorage.getItem("mafia-token"); } catch { token = null; }
+    if (!token) { setError("Please sign in again"); return; }
+    setDeleteBusy(true);
+    try {
+      const res = await fetch("/api/auth/delete-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ password: deletePass }),
+      });
+      if (!res.ok) {
+        let msg = "Could not delete account";
+        try { msg = (await res.json())?.message || msg; } catch {}
+        throw new Error(msg);
+      }
+      try {
+        localStorage.removeItem("mafia-token");
+        localStorage.removeItem("mafia-user");
+      } catch {}
+      setDeleteOpen(false);
+      setDeletePass("");
+      setUser(null);
+      onLogout?.();
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   async function handleLogout() {
     let token: string | null = null;
     try { token = localStorage.getItem("mafia-token"); } catch { token = null; }
@@ -187,7 +223,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
-        {view === "main" && authMode === "idle" && (
+        {view === "main" && authMode === "idle" && !deleteOpen && (
           <div className="game-panel bg-black/45! ring-1 ring-white/10 shadow-xl shadow-black/40 px-5 py-6">
             <div className="text-center mb-6">
               <h1 className="font-display text-5xl font-bold tracking-tight mb-2 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
@@ -252,10 +288,45 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
           </div>
         )}
 
+        {deleteOpen && user && (
+          <div className="game-panel px-5 py-6">
+            <h3 className="font-display text-xl font-semibold text-white mb-2">Delete account</h3>
+            <p className="text-sm text-gray-400 mb-3">
+              This permanently deletes your account, profile, stats and chat messages. It cannot be undone.
+            </p>
+            <input
+              className={inputCls + " mb-2"}
+              placeholder="Confirm your password"
+              type="password"
+              autoComplete="current-password"
+              value={deletePass}
+              onChange={(e) => { setDeletePass(e.target.value); setError(""); }}
+            />
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                disabled={deleteBusy}
+                className="w-full min-h-[52px] rounded-xl bg-red-700 hover:bg-red-600 disabled:opacity-60 text-white text-base font-semibold transition-colors cursor-pointer"
+                onClick={handleDeleteAccount}
+              >
+                {deleteBusy ? "Deleting…" : "Delete forever"}
+              </button>
+              <button
+                type="button"
+                className={`${ghostBtn} cursor-pointer`}
+                onClick={() => { setDeleteOpen(false); setDeletePass(""); setError(""); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {authMode === "signup" && !user && (
           <div className="game-panel px-5 py-6">
             <h3 className="font-display text-xl font-semibold text-white mb-3">Sign up</h3>
-            <input className={inputCls + " mb-2"} placeholder="Display name" value={authName} onChange={(e) => setAuthName(e.target.value)} />
+            <input className={inputCls + " mb-2"} placeholder="Display name" maxLength={24} value={authName} onChange={(e) => setAuthName(e.target.value)} />
             <input className={inputCls + " mb-2"} placeholder="Email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
             <label className="flex flex-col gap-1 mb-2">
               <span className="text-sm font-medium text-gray-400">Date of birth</span>
@@ -364,6 +435,18 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
           <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline">Privacy Policy</a>
           {" · "}
           <a href="/terms.html" target="_blank" rel="noreferrer" className="underline">Terms of Service</a>
+          {user && !deleteOpen && view === "main" && (
+            <>
+              {" · "}
+              <button
+                type="button"
+                className="underline cursor-pointer"
+                onClick={() => { setDeleteOpen(true); setAuthMode("idle"); setError(""); }}
+              >
+                Delete account
+              </button>
+            </>
+          )}
         </p>
       </div>
       <HowToPlay open={howToPlayOpen} onOpenChange={setHowToPlayOpen} />

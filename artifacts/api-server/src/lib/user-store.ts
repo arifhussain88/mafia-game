@@ -4,7 +4,9 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { and, count, eq, gt, sql } from "drizzle-orm";
 import {
+  chatMessagesTable,
   getDb,
+  matchPlayersTable,
   hasDatabaseUrl,
   profilesTable,
   sessionsTable,
@@ -350,5 +352,37 @@ export async function bumpProfileAfterMatch(userId: string, won: boolean) {
       });
   } catch {
     throw new DbUnavailableError("Failed to update profile");
+  }
+}
+
+/**
+ * Permanently remove an account and the personal data tied to it.
+ * Sessions and profile cascade; chat lines are deleted; match history rows
+ * are anonymised (kept only as aggregate game results).
+ */
+export async function deleteUserAccount(userId: string): Promise<void> {
+  if (!usingDatabase()) {
+    const store = readStore();
+    store.users = store.users.filter((u) => u.id !== userId);
+    for (const [token, session] of Object.entries(store.sessions)) {
+      if (session.userId === userId) delete store.sessions[token];
+    }
+    writeStore(store);
+    return;
+  }
+  try {
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      await tx.delete(chatMessagesTable).where(eq(chatMessagesTable.userId, userId));
+      await tx
+        .update(matchPlayersTable)
+        .set({ userId: null, name: "Deleted player" })
+        .where(eq(matchPlayersTable.userId, userId));
+      await tx.delete(sessionsTable).where(eq(sessionsTable.userId, userId));
+      await tx.delete(profilesTable).where(eq(profilesTable.userId, userId));
+      await tx.delete(usersTable).where(eq(usersTable.id, userId));
+    });
+  } catch (err) {
+    throw new DbUnavailableError(err instanceof Error ? err.message : "Database unavailable");
   }
 }

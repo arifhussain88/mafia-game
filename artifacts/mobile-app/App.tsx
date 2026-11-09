@@ -1,136 +1,188 @@
-import { Alert, View } from 'react-native';
-import { useEffect, useState } from 'react';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { auth, isFirebaseReady } from './src/config/firebase';
-import { sanitizeDisplayName, validateAgeGate, validateEmail } from './src/lib/auth';
-import { createLobbyRoom, joinLobbyRoom, loadLobbyRooms, type LobbyRoom } from './src/lib/lobby';
-import { AuthScreen, type AuthFormValues } from './src/screens/AuthScreen';
-import { LobbyScreen } from './src/screens/LobbyScreen';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  BackHandler,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import Constants from 'expo-constants';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { WebView as RNWebView, type WebViewNavigation } from 'react-native-webview';
+import type {
+  ShouldStartLoadRequest,
+  WebViewErrorEvent,
+  WebViewHttpErrorEvent,
+} from 'react-native-webview/lib/WebViewTypes';
+
+// react-native-webview declares `class WebView<P = undefined>` and its props as
+// `WebViewProps & P`; with P = undefined that collapses to `never` under the
+// strict TS API in RN 0.88. Instantiate it with an empty extra-props type.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+const WebView = RNWebView<{}>;
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type WebViewRef = RNWebView<{}>;
+
+/**
+ * Mafia Wars mobile shell.
+ *
+ * The game itself is the React web app served by the API server (artifacts/game-lobby).
+ * This app loads it in a full-screen WebView so the same build runs in Expo Go for
+ * testing and becomes the Play Store app through EAS Build — one codebase to maintain.
+ *
+ * Game URL priority:
+ *   1. EXPO_PUBLIC_GAME_URL (e.g. your LAN Vite server: http://192.168.1.42:5173)
+ *   2. app.json -> expo.extra.gameUrl (the live server)
+ */
+const GAME_URL = (
+  process.env.EXPO_PUBLIC_GAME_URL ||
+  (Constants.expoConfig?.extra?.gameUrl as string | undefined) ||
+  'http://141.148.204.30'
+).replace(/\/+$/, '');
+
+const GAME_ORIGIN = (() => {
+  const match = GAME_URL.match(/^(https?:\/\/[^/]+)/i);
+  return match ? match[1].toLowerCase() : GAME_URL.toLowerCase();
+})();
+
+const BG = '#0b0b0f';
+const ACCENT = '#d97706';
+
+function isGameUrl(url: string) {
+  return url.toLowerCase().startsWith(GAME_ORIGIN);
+}
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
-  const [roomCodeInput, setRoomCodeInput] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [lobbyRooms, setLobbyRooms] = useState<LobbyRoom[]>([]);
-  const [activeRoom, setActiveRoom] = useState<LobbyRoom | null>(null);
+  const webRef = useRef<WebViewRef>(null);
+  const canGoBackRef = useRef(false);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const refreshRooms = async () => {
-    const rooms = await loadLobbyRooms();
-    setLobbyRooms(rooms);
-  };
-
+  // Android hardware back: go back inside the game (e.g. from Privacy page) instead of closing the app.
   useEffect(() => {
-    if (!isAuthenticated) return;
-    void refreshRooms();
-  }, [isAuthenticated]);
-
-  const handleAuthSubmit = async (values: AuthFormValues) => {
-    const trimmedEmail = values.email.trim();
-    const trimmedName = sanitizeDisplayName(values.displayName);
-    const isSignup = values.mode === 'signup';
-
-    if (!trimmedEmail || !values.password.trim()) {
-      setErrorMessage('Email and password are required.');
-      return;
-    }
-
-    if (!validateEmail(trimmedEmail)) {
-      setErrorMessage('Please enter a valid email address.');
-      return;
-    }
-
-    if (isSignup) {
-      if (!trimmedName) {
-        setErrorMessage('Please choose a display name.');
-        return;
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (canGoBackRef.current) {
+        webRef.current?.goBack();
+        return true;
       }
+      return false;
+    });
+    return () => sub.remove();
+  }, []);
 
-      if (!values.dob) {
-        setErrorMessage('Please enter your date of birth.');
-        return;
-      }
+  const onNavChange = useCallback((nav: WebViewNavigation) => {
+    canGoBackRef.current = nav.canGoBack;
+  }, []);
 
-      if (!validateAgeGate(values.dob)) {
-        setErrorMessage('You must be at least 13 years old to play.');
-        return;
-      }
+  // Keep the game inside the app; send mailto:, tel: and other sites to the system.
+  const onShouldStart = useCallback((req: ShouldStartLoadRequest) => {
+    const { url } = req;
+    if (url.startsWith('about:') || url.startsWith('data:') || url.startsWith('blob:')) return true;
+    if (isGameUrl(url)) return true;
+    void Linking.openURL(url).catch(() => {});
+    return false;
+  }, []);
 
-      if (!values.acceptTerms) {
-        setErrorMessage('You must accept the terms and privacy policy.');
-        return;
-      }
-    }
+  const retry = useCallback(() => {
+    setFailed(null);
+    setLoading(true);
+    setReloadKey((k) => k + 1);
+  }, []);
 
-    setIsSubmitting(true);
-    setErrorMessage('');
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+        <StatusBar style="light" />
 
-    try {
-      if (isFirebaseReady) {
-        if (isSignup) {
-          await createUserWithEmailAndPassword(auth, trimmedEmail, values.password);
-        } else {
-          await signInWithEmailAndPassword(auth, trimmedEmail, values.password);
-        }
-      } else {
-        await new Promise<void>((resolve) => setTimeout(() => resolve(), 700));
-      }
+        {failed ? (
+          <View style={styles.center}>
+            <Text style={styles.title}>Can't reach the town</Text>
+            <Text style={styles.body}>
+              Check your internet connection and try again.
+            </Text>
+            <Pressable style={styles.button} onPress={retry} accessibilityRole="button">
+              <Text style={styles.buttonText}>Try again</Text>
+            </Pressable>
+            {__DEV__ ? <Text style={styles.debug}>{GAME_URL}{'\n'}{failed}</Text> : null}
+          </View>
+        ) : (
+          <WebView
+            key={reloadKey}
+            ref={webRef}
+            source={{ uri: GAME_URL }}
+            style={styles.web}
+            originWhitelist={['*']}
+            javaScriptEnabled
+            domStorageEnabled
+            // Login token is kept in localStorage; keep it across launches.
+            incognito={false}
+            cacheEnabled
+            // Game sounds/music start after a tap; allow autoplay of follow-up sounds.
+            mediaPlaybackRequiresUserAction={false}
+            allowsInlineMediaPlayback
+            // target="_blank" links (Privacy/Terms) open in the same view; back button returns.
+            setSupportMultipleWindows={false}
+            mixedContentMode="never"
+            overScrollMode="never"
+            pullToRefreshEnabled={false}
+            bounces={false}
+            textZoom={100}
+            applicationNameForUserAgent="MafiaWarsApp/1.0"
+            onShouldStartLoadWithRequest={onShouldStart}
+            onNavigationStateChange={onNavChange}
+            onLoadEnd={() => setLoading(false)}
+            onError={(e: WebViewErrorEvent) => setFailed(e.nativeEvent.description || 'Network error')}
+            onHttpError={(e: WebViewHttpErrorEvent) => {
+              if (e.nativeEvent.statusCode >= 500 && isGameUrl(e.nativeEvent.url)) {
+                setFailed(`Server error ${e.nativeEvent.statusCode}`);
+              }
+            }}
+            // Android may kill the WebView renderer in the background; recover instead of a blank screen.
+            onRenderProcessGone={() => retry()}
+            onContentProcessDidTerminate={() => webRef.current?.reload()}
+          />
+        )}
 
-      setDisplayName(trimmedName || trimmedEmail.split('@')[0]);
-      setEmail(trimmedEmail);
-      setIsAuthenticated(true);
-      Alert.alert('Welcome', `You are ready to join the next round, ${trimmedName || trimmedEmail.split('@')[0]}.`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to continue right now.';
-      setErrorMessage(message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCreateRoom = async () => {
-    const nextName = sanitizeDisplayName(displayName) || email.split('@')[0] || 'Detective';
-    const room = await createLobbyRoom(nextName);
-    setActiveRoom(room);
-    setRoomCodeInput(room.code);
-    await refreshRooms();
-  };
-
-  const handleJoinRoom = async () => {
-    const nextName = sanitizeDisplayName(displayName) || email.split('@')[0] || 'Detective';
-    const room = await joinLobbyRoom(roomCodeInput, nextName);
-
-    if (!room) {
-      setErrorMessage('Room code not found.');
-      return;
-    }
-
-    setActiveRoom(room);
-    setRoomCodeInput(room.code);
-    await refreshRooms();
-  };
-
-  if (isAuthenticated) {
-    return (
-      <LobbyScreen
-        displayName={displayName}
-        email={email}
-        roomCodeInput={roomCodeInput}
-        onRoomCodeChange={setRoomCodeInput}
-        lobbyRooms={lobbyRooms}
-        activeRoom={activeRoom}
-        onCreateRoom={handleCreateRoom}
-        onJoinRoom={handleJoinRoom}
-        onSelectRoom={(room) => {
-          setActiveRoom(room);
-          setRoomCodeInput(room.code);
-        }}
-        errorMessage={errorMessage}
-      />
-    );
-  }
-
-  return <AuthScreen isSubmitting={isSubmitting} errorMessage={errorMessage} onSubmit={handleAuthSubmit} />;
+        {loading && !failed ? (
+          <View style={styles.loader} pointerEvents="none">
+            <Text style={styles.brand}>MAFIA WARS</Text>
+            <ActivityIndicator size="large" color={ACCENT} />
+          </View>
+        ) : null}
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: BG },
+  web: { flex: 1, backgroundColor: BG },
+  loader: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: BG,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 24,
+  },
+  brand: { color: '#fbbf24', fontSize: 32, fontWeight: '800', letterSpacing: 4 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
+  title: { color: '#fff', fontSize: 22, fontWeight: '700', textAlign: 'center' },
+  body: { color: '#9ca3af', fontSize: 15, textAlign: 'center' },
+  button: {
+    marginTop: 12,
+    backgroundColor: ACCENT,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 12,
+    minWidth: 180,
+    alignItems: 'center',
+  },
+  buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  debug: { marginTop: 16, color: '#6b7280', fontSize: 12, textAlign: 'center' },
+});

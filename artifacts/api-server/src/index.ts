@@ -12,12 +12,17 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const corsOrigin = process.env.CORS_ORIGIN || true;
+// Same-origin by default (web client and WebView app load the game from this host).
+// Set CORS_ORIGIN (comma-separated) only if a frontend is hosted elsewhere.
+const corsOrigin = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
+  : false;
 
 const httpServer = createServer(app);
 
 const io = new SocketIOServer(httpServer, {
   path: "/socket.io",
+  maxHttpBufferSize: 16 * 1024,
   cors: {
     origin: corsOrigin,
     methods: ["GET", "POST"],

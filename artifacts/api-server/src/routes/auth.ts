@@ -6,6 +6,7 @@ import {
   createUser,
   DbUnavailableError,
   deleteSession,
+  deleteUserAccount,
   ensureTestUser,
   findUserByEmail,
   getUserForToken,
@@ -30,9 +31,9 @@ const RATE_WINDOW_MS = 15 * 60 * 1000;
 const RATE_MAX = 10;
 const MAX_USERS = 500;
 
-function clientIp(req: { ip?: string; headers: Record<string, unknown> }) {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded.length > 0) return forwarded.split(",")[0].trim();
+function clientIp(req: { ip?: string }) {
+  // app sets "trust proxy" to loopback, so req.ip is the real client behind Caddy
+  // and cannot be spoofed with a client-sent X-Forwarded-For header.
   return req.ip || "unknown";
 }
 
@@ -46,6 +47,12 @@ function rateLimited(ip: string) {
   entry.count += 1;
   return entry.count > RATE_MAX;
 }
+
+// Drop expired rate-limit entries so the map cannot grow forever.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of loginAttempts) if (now > entry.resetAt) loginAttempts.delete(ip);
+}, 5 * 60 * 1000).unref();
 
 function isTestEmail(email: string) {
   return TEST_USERS.some((user) => user.email === email);
@@ -85,7 +92,11 @@ router.post("/signup", async (req, res) => {
 
   const { name, email, password, dob } = req.body ?? {};
   if (!name || !email || !password || !dob) return res.status(400).json({ message: "name, email, password and dob required" });
-  if (!String(email).includes("@")) return res.status(400).json({ message: "Invalid email" });
+  const trimmedName = String(name).trim().replace(/\s+/g, " ");
+  if (trimmedName.length < 1 || trimmedName.length > 24) return res.status(400).json({ message: "Display name must be 1 to 24 characters" });
+  const emailStr = String(email).trim();
+  if (emailStr.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) return res.status(400).json({ message: "Invalid email" });
+  if (String(password).length > 128) return res.status(400).json({ message: "Password is too long" });
   const parsedDob = new Date(String(dob));
   if (Number.isNaN(parsedDob.getTime())) return res.status(400).json({ message: "Invalid date of birth" });
   const ageMs = Date.now() - parsedDob.getTime();
@@ -98,15 +109,15 @@ router.post("/signup", async (req, res) => {
     if (total >= MAX_USERS) {
       return res.status(503).json({ message: "Signup is temporarily closed. Try again later." });
     }
-    const exists = await findUserByEmail(String(email));
+    const exists = await findUserByEmail(emailStr);
     if (exists) return res.status(409).json({ message: "Email already registered" });
 
     const id = crypto.randomUUID();
     const passwordHash = await hashPassword(String(password));
     const user = await createUser({
       id,
-      name: String(name),
-      email: String(email).toLowerCase(),
+      name: trimmedName,
+      email: emailStr.toLowerCase(),
       dob: parsedDob.toISOString(),
       passwordHash,
       createdAt: new Date().toISOString(),
@@ -127,7 +138,7 @@ router.post("/login", async (req, res) => {
 
   const { email, password } = req.body ?? {};
   if (!email || !password) return res.status(400).json({ message: "email and password required" });
-  const normalizedEmail = String(email).toLowerCase();
+  const normalizedEmail = String(email).trim().toLowerCase();
   if (process.env.NODE_ENV === "production" && isTestEmail(normalizedEmail)) {
     return res.status(403).json({ message: "Test accounts are disabled" });
   }
@@ -159,6 +170,35 @@ router.post("/logout", async (req, res) => {
   const token = bearerToken(req);
   try {
     await deleteSession(token);
+    return res.json({ ok: true });
+  } catch (err) {
+    if (isDbDown(err)) {
+      return res.status(503).json({ message: "Service temporarily unavailable. Try again." });
+    }
+    throw err;
+  }
+});
+
+/**
+ * Permanently delete the signed-in account (Google Play account-deletion policy).
+ * Requires the current password so a stolen token alone cannot wipe an account.
+ */
+router.post("/delete-account", async (req, res) => {
+  const ip = clientIp(req);
+  if (rateLimited(ip)) return res.status(429).json({ message: "Too many attempts. Try again later." });
+
+  const token = bearerToken(req);
+  const { password } = req.body ?? {};
+  if (!password) return res.status(400).json({ message: "Password is required to delete your account" });
+
+  try {
+    const user = await getUserForToken(token);
+    if (!user) return res.status(401).json({ message: "Please sign in again" });
+    const ok = await verifyPassword(String(password), user.passwordHash);
+    if (!ok) return res.status(401).json({ message: "Incorrect password" });
+
+    await deleteUserAccount(user.id);
+    req.log?.info({ userId: user.id }, "Account deleted");
     return res.json({ ok: true });
   } catch (err) {
     if (isDbDown(err)) {

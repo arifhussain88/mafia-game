@@ -751,11 +751,40 @@ function handleMidGameDisconnect(socketId: string, room: Room, io: Server, code:
   }
 }
 
+/** A user (account) may hold at most one live seat across all rooms. */
+function userHasActiveSeat(userId: unknown): boolean {
+  if (typeof userId !== "string") return false;
+  for (const room of rooms.values()) {
+    for (const p of room.players.values()) {
+      if (p.userId === userId && p.connected) return true;
+    }
+  }
+  return false;
+}
+
+function socketInAnyRoom(socketId: string): boolean {
+  for (const room of rooms.values()) if (room.players.has(socketId)) return true;
+  return false;
+}
+
+const ALREADY_SEATED = "You're already in a room (maybe in another tab or device). Leave it first.";
+
+function isLoopback(addr: string) {
+  return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
+}
+
+/** Real client IP. X-Forwarded-For is only trusted when the hop is our local Caddy. */
 function socketClientIp(socket: Socket) {
+  const direct = socket.handshake.address || "unknown";
+  if (!isLoopback(direct)) return direct;
   const forwarded = socket.handshake.headers["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded.length > 0) return forwarded.split(",")[0].trim();
-  if (Array.isArray(forwarded) && forwarded[0]) return String(forwarded[0]).split(",")[0].trim();
-  return socket.handshake.address || "unknown";
+  const raw = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;
+  if (typeof raw === "string" && raw.length > 0) {
+    const parts = raw.split(",").map((p) => p.trim()).filter(Boolean);
+    // Rightmost entry is the one appended by the trusted proxy.
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
+  return direct;
 }
 
 function trackSocketIp(socket: Socket) {
@@ -839,6 +868,11 @@ export function registerSocketHandlers(io: Server) {
     socket.on("create-room", (data: { name: string }) => {
       const name = (data?.name ?? "").trim() || String(socket.data.userName ?? "").trim();
       if (!name) { socket.emit("room-error", { message: "Display name is required" }); return; }
+      if (name.length > 24) { socket.emit("room-error", { message: "Display name must be 24 characters or fewer" }); return; }
+      if (socketInAnyRoom(socket.id) || userHasActiveSeat(socket.data.userId)) {
+        socket.emit("room-error", { message: ALREADY_SEATED });
+        return;
+      }
       if (rooms.size >= MAX_OPEN_ROOMS) {
         socket.emit("room-error", { message: "Too many rooms open right now. Try again later." });
         return;
@@ -898,17 +932,21 @@ export function registerSocketHandlers(io: Server) {
       room.emptySince = undefined;
 
       if (room.phase !== "lobby") {
-        if (room.forfeitedNames.has(name.toLowerCase())) {
-          socket.emit("room-error", { message: "You left this game and cannot rejoin." });
-          return;
-        }
-
-        const disconnected = Array.from(room.players.values()).find(
-          (p) => !p.connected && p.name.toLowerCase() === name.toLowerCase(),
-        );
+        // Seats are bound to the account (userId), never to the display name the
+        // client sends — otherwise anyone with the room code could take over a
+        // dropped player's seat and see their role.
+        const userId = typeof socket.data.userId === "string" ? socket.data.userId : undefined;
+        const disconnected = userId
+          ? Array.from(room.players.values()).find((p) => !p.connected && p.userId === userId)
+          : undefined;
 
         if (!disconnected) {
           socket.emit("room-error", { message: "This game has already started." });
+          return;
+        }
+
+        if (room.forfeitedNames.has(disconnected.name.toLowerCase())) {
+          socket.emit("room-error", { message: "You left this game and cannot rejoin." });
           return;
         }
 
@@ -946,6 +984,12 @@ export function registerSocketHandlers(io: Server) {
         io.to(code).emit("player-rejoined", { name: disconnected.name });
         emitPlayersUpdated(io, code, room);
         logger.info({ code, name }, "Player reconnected");
+        return;
+      }
+
+      if (name.length > 24) { socket.emit("room-error", { message: "Display name must be 24 characters or fewer" }); return; }
+      if (socketInAnyRoom(socket.id) || userHasActiveSeat(socket.data.userId)) {
+        socket.emit("room-error", { message: ALREADY_SEATED });
         return;
       }
 

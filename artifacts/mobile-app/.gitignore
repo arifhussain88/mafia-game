@@ -2,5 +2,12 @@ node_modules/
 .expo/
 dist/
 web-build/
+android/
+ios/
 *.log
+*.jks
+*.keystore
+google-services.json
+play-service-account*.json
+.env.local
 .DS_Store
