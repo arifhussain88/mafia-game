@@ -1041,7 +1041,8 @@ function rejoinSeat(io: Server, socket: Socket, code: string, room: Room): Rejoi
   }
 
   sendRejoinSnapshot(io, socket, code, room, seat);
-  if (room.phase !== "lobby") io.to(code).emit("player-rejoined", { name: seat.name });
+  // Tell everyone else; the rejoining player gets their own "Reconnected" toast.
+  if (room.phase !== "lobby") socket.to(code).emit("player-rejoined", { name: seat.name });
   emitPlayersUpdated(io, code, room);
   if (seat.role === "mafia" && oldId !== socket.id) emitMafiaRoster(io, room);
   logger.info({ code, name: seat.name, phase: room.phase }, "Player rejoined seat");

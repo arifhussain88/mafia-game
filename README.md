@@ -56,19 +56,22 @@ pnpm approve-builds --all
 ### 3. Start the API server (Terminal 1)
 
 ```bash
-pnpm --filter @workspace/api-server run dev
+cd artifacts/api-server
+npm run dev
 ```
 
-You should see output like:
-```
-Server listening on port 3001
-```
+(Or from the repo root: `pnpm --filter @workspace/api-server run dev`. If `pnpm` is not on your PATH, use `corepack pnpm` instead.)
+
+You should see `Server listening` with `port: 8080`. The frontend proxies `/api` and `/socket.io` to port 8080, so keep that port free. If something else already holds it, the server stops with "HTTP server failed to start".
 
 ### 4. Start the frontend dev server (Terminal 2)
 
 ```bash
-pnpm --filter @workspace/game-lobby run dev
+cd artifacts/game-lobby
+npm run dev
 ```
+
+(Or `pnpm --filter @workspace/game-lobby run dev`.) Windows PowerShell 5.1 does not accept `&&`, so run each command on its own line or join them with `;`.
 
 You should see output like:
 ```
