@@ -15,7 +15,8 @@ const TIMERS = {
   DETECTIVE_REVEAL_PAUSE: 2800,
   DAY_DISCUSSION: 60000,
   DAY_VOTE: 30000,
-  DAY_RESULT: 5000,
+  /** Long enough to read the vote tally. */
+  DAY_RESULT: 7000,
   /** Delay before an intentional leave becomes a permanent forfeit. */
   FORFEIT_GRACE: 15000,
 };
@@ -91,7 +92,10 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
-const MIN_PLAYERS = 3;
+/** 4+ so every table has at least one plain civilian alongside Mafia, Doctor and Detective. */
+const MIN_PLAYERS = 4;
+/** A day vote can be spent on "skip" instead of a player. */
+const SKIP_VOTE = "skip";
 const MAX_PLAYERS_PER_ROOM = 12;
 /**
  * Capacity guards for the Oracle Always Free VM. Load scales with *concurrent*
@@ -151,10 +155,42 @@ interface Player {
   role: Role | null;
 }
 
+/**
+ * town: everyone (lobby, day, game over). mafia: living Mafia at night.
+ * ghost: eliminated players, any time; only the dead (and everyone after the game) see it.
+ */
+type ChatChannel = "town" | "mafia" | "ghost";
+
 interface ChatMessage {
   id: string;
   name: string;
   text: string;
+  channel: ChatChannel;
+}
+
+function isNightPhase(phase: Phase): boolean {
+  return phase === "night-mafia" || phase === "night-doctor" || phase === "night-detective" || phase === "night-summary";
+}
+
+/** Which channel this player's message goes to right now, or why they can't talk. */
+function chatChannelFor(room: Room, player: Player): ChatChannel | { error: string } {
+  if (room.phase === "lobby" || room.phase === "game-over") return "town";
+  if (!player.alive) return "ghost";
+  if (isNightPhase(room.phase)) {
+    return player.role === "mafia" ? "mafia" : { error: "The town is asleep. Only the Mafia can talk at night." };
+  }
+  return "town";
+}
+
+function canSeeChat(room: Room, viewer: Player, message: ChatMessage): boolean {
+  if (message.channel === "town" || room.phase === "game-over") return true;
+  if (message.channel === "mafia") return viewer.role === "mafia";
+  return !viewer.alive;
+}
+
+/** Chat history this player is allowed to see (rejoin snapshot). */
+function visibleChat(room: Room, viewer: Player): ChatMessage[] {
+  return room.chatMessages.filter((m) => canSeeChat(room, viewer, m));
 }
 
 interface Room {
@@ -183,7 +219,12 @@ interface Room {
   /** Snapshot pieces so a rejoining player sees what everyone else sees. */
   dayNarration: string;
   nightSummaryLines: string[];
-  lastDayResult: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean } | null;
+  lastDayResult: {
+    eliminatedId: string | null;
+    eliminatedName: string | null;
+    skipped: boolean;
+    tally: { voter: string; target: string | null }[];
+  } | null;
   detectiveResult: { detectiveId: string; targetName: string; isMafia: boolean } | null;
   winner: Winner | null;
   nightHadDeath: boolean;
@@ -468,6 +509,7 @@ function applyForfeit(io: Server, code: string, playerId: string) {
 
 function emitChatMessage(io: Server, room: Room, message: ChatMessage) {
   for (const player of room.players.values()) {
+    if (!canSeeChat(room, player, message)) continue;
     const target = io.sockets.sockets.get(player.id);
     if (!target) continue;
     const blocked = target.data.blockedNames as Set<string> | undefined;
@@ -796,11 +838,20 @@ function resolveDay(io: Server, code: string) {
     .filter(([, c]) => c === maxVotes)
     .map(([id]) => id);
 
-  if (topTargets.length === 1 && maxVotes >= majority) {
+  if (topTargets.length === 1 && topTargets[0] !== SKIP_VOTE && maxVotes >= majority) {
     eliminatedId = topTargets[0];
   } else {
     skipped = true;
   }
+
+  // Public tally: every living voter and their choice (null = didn't vote).
+  const tally = living(room).map((voter) => {
+    const choice = room.dayVotes.get(voter.id);
+    return {
+      voter: voter.name,
+      target: choice === undefined ? null : choice === SKIP_VOTE ? SKIP_VOTE : room.players.get(choice)?.name ?? null,
+    };
+  });
 
   let eliminatedName: string | null = null;
 
@@ -813,7 +864,7 @@ function resolveDay(io: Server, code: string) {
     io.to(code).emit("mafia-kill-sound");
   }
 
-  room.lastDayResult = { eliminatedId, eliminatedName, skipped };
+  room.lastDayResult = { eliminatedId, eliminatedName, skipped, tally };
   // A full night + day with no death. If the table keeps stalling (idle
   // players, nobody votes) end it rather than looping forever.
   if (!eliminatedName && !room.nightHadDeath) room.quietRounds += 1;
@@ -823,6 +874,7 @@ function resolveDay(io: Server, code: string) {
     eliminatedId,
     eliminatedName,
     skipped,
+    tally,
     players: serializePlayers(room.players),
   });
 
@@ -1037,7 +1089,7 @@ function sendRejoinSnapshot(io: Server, socket: Socket, code: string, room: Room
       total: connectedLivingMafia(room).length,
     });
   }
-  socket.emit("chat-history", { messages: room.chatMessages });
+  socket.emit("chat-history", { messages: visibleChat(room, seat) });
 }
 
 type RejoinResult = "ok" | "no-seat" | "left";
@@ -1485,12 +1537,9 @@ export function registerSocketHandlers(io: Server) {
           socket.emit("room-error", { message: "Reconnect to send chat." });
           return;
         }
-        if (
-          room.phase !== "lobby" &&
-          room.phase !== "game-over" &&
-          !player.alive
-        ) {
-          socket.emit("room-error", { message: "Eliminated players can only watch chat." });
+        const channel = chatChannelFor(room, player);
+        if (typeof channel !== "string") {
+          socket.emit("room-error", { message: channel.error });
           return;
         }
         const text = str(data?.text);
@@ -1506,7 +1555,7 @@ export function registerSocketHandlers(io: Server) {
         }
         room.lastChatAt.set(player.id, now);
         room.chatSeq += 1;
-        const message: ChatMessage = { id: String(room.chatSeq), name: player.name, text: maskProfanity(text) };
+        const message: ChatMessage = { id: String(room.chatSeq), name: player.name, text: maskProfanity(text), channel };
         room.chatAuthors.set(message.id, player.userId);
         room.chatMessages.push(message);
         emitChatMessage(io, room, message);
@@ -1716,18 +1765,21 @@ export function registerSocketHandlers(io: Server) {
         if (room.phase !== "day-vote" || !voter.alive || targetId === socket.id) return;
         if (room.dayVotes.has(socket.id)) return;
 
-        const target = room.players.get(targetId);
-        if (!target || !target.alive) return;
+        if (targetId !== SKIP_VOTE) {
+          const target = room.players.get(targetId);
+          if (!target || !target.alive) return;
+        }
 
         room.dayVotes.set(socket.id, targetId);
 
         const voteCounts = dayVoteCounts(room);
         io.to(code).emit("day-vote-update", { votes: voteCounts });
 
+        // Resolve early on a majority (for a player or for skipping), or once every living player has voted.
         const livingCount = living(room).length;
         const majority = Math.floor(livingCount / 2) + 1;
         const maxVotes = Math.max(...Object.values(voteCounts));
-        if (maxVotes >= majority) resolveDay(io, code);
+        if (maxVotes >= majority || room.dayVotes.size >= livingCount) resolveDay(io, code);
         return;
       }
     });

@@ -2,12 +2,28 @@ import { useEffect, useRef, useState } from "react";
 import { MessageCircle, MoreHorizontal, X } from "lucide-react";
 import { playChatPing } from "@/lib/audio";
 
-type ChatMessage = { id: string; name: string; text: string };
+export type ChatChannel = "town" | "mafia" | "ghost";
+export type ChatMessage = { id: string; name: string; text: string; channel?: ChatChannel };
+/** What this player can do in chat right now (server enforces the same rules). */
+export type ChatMode = ChatChannel | "locked";
+
+const MODE_UI: Record<ChatMode, { title: string; placeholder: string; note?: string }> = {
+  town: { title: "Room chat", placeholder: "Message the room" },
+  mafia: { title: "Mafia chat", placeholder: "Plot with your crew", note: "Only the Mafia can see this." },
+  ghost: { title: "Ghost chat", placeholder: "Whisper to the other ghosts", note: "Only eliminated players can see this." },
+  locked: { title: "Room chat", placeholder: "", note: "The town is asleep. Chat opens at dawn." },
+};
+
+const CHANNEL_TAG: Record<ChatChannel, string | null> = {
+  town: null,
+  mafia: "text-red-300 bg-red-950/60",
+  ghost: "text-sky-200 bg-sky-950/60",
+};
 
 type Props = {
   myName: string;
   messages: ChatMessage[];
-  canSend?: boolean;
+  mode: ChatMode;
   onSend: (text: string) => void;
   onReport: (id: string) => void;
   onBlock: (name: string) => void;
@@ -16,7 +32,7 @@ type Props = {
 export default function RoomChat({
   myName,
   messages,
-  canSend = true,
+  mode,
   onSend,
   onReport,
   onBlock,
@@ -66,7 +82,7 @@ export default function RoomChat({
         <div className="game-panel w-full px-3 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.55)]">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] uppercase tracking-[0.2em] text-amber-600/90 font-semibold">
-              Room chat
+              {MODE_UI[mode].title}
             </p>
             <button
               type="button"
@@ -87,6 +103,11 @@ export default function RoomChat({
               messages.map((message) => (
                 <div key={message.id} className="flex items-start justify-between gap-2 relative">
                   <p className="text-sm text-gray-200 break-words min-w-0">
+                    {message.channel && CHANNEL_TAG[message.channel] && (
+                      <span className={`mr-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${CHANNEL_TAG[message.channel]}`}>
+                        {message.channel}
+                      </span>
+                    )}
                     <span className="font-semibold text-amber-200">{message.name}: </span>
                     {message.text}
                   </p>
@@ -132,7 +153,10 @@ export default function RoomChat({
               ))
             )}
           </div>
-          {canSend ? (
+          {MODE_UI[mode].note && mode !== "locked" && (
+            <p className="mt-2 text-[11px] text-gray-500">{MODE_UI[mode].note}</p>
+          )}
+          {mode !== "locked" ? (
             <form
               className="mt-2 flex gap-2"
               onSubmit={(event) => {
@@ -147,7 +171,7 @@ export default function RoomChat({
                 value={draft}
                 maxLength={200}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder="Message the room"
+                placeholder={MODE_UI[mode].placeholder}
                 className="flex-1 min-h-[40px] px-3 rounded-xl bg-gray-900 border border-gray-700 text-white text-sm"
               />
               <button
@@ -159,7 +183,7 @@ export default function RoomChat({
             </form>
           ) : (
             <p className="mt-2 text-center text-[11px] text-gray-500">
-              You’re eliminated — you can read chat only.
+              {MODE_UI.locked.note}
             </p>
           )}
         </div>

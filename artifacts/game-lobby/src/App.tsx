@@ -8,14 +8,14 @@ import MatchCountdown from "@/pages/MatchCountdown";
 import RoleReveal from "@/pages/RoleReveal";
 import NightPhase from "@/pages/NightPhase";
 import NightSummary from "@/pages/NightSummary";
-import EliminationReveal from "@/pages/EliminationReveal";
+import EliminationReveal, { type VoteTallyEntry } from "@/pages/EliminationReveal";
 import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
 import MuteToggle from "@/components/MuteToggle";
 import Atmosphere from "@/components/Atmosphere";
 import LeaveMatchButton from "@/components/LeaveMatchButton";
 import MatchTicker from "@/components/MatchTicker";
-import RoomChat from "@/components/RoomChat";
+import RoomChat, { type ChatMode, type ChatMessage } from "@/components/RoomChat";
 import { useBackHandler } from "@/lib/native-bridge";
 import { playNightSting, playDayChime, playMafiaKill, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
@@ -77,7 +77,7 @@ type RejoinSnapshot = {
   dayVotes: Record<string, number>;
   narration: string | null;
   nightSummaryLines: string[];
-  dayResult: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean } | null;
+  dayResult: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; tally?: VoteTallyEntry[] } | null;
   detectiveResult: { targetName: string; isMafia: boolean } | null;
   winner: Winner | null;
 };
@@ -112,7 +112,7 @@ export default function App() {
 
   const [dayVotes, setDayVotes] = useState<Record<string, number>>({});
   const [myDayVote, setMyDayVote] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<{ id: string; name: string; text: string }[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const blockedNamesRef = useRef<Set<string>>(new Set());
 
   const [dayNarration, setDayNarration] = useState<string | null>(null);
@@ -124,6 +124,7 @@ export default function App() {
   const [nightSummaryLines, setNightSummaryLines] = useState<string[]>([]);
 
   const [elimInfo, setElimInfo] = useState<{
+    tally: VoteTallyEntry[];
     name: string | null;
     skipped?: boolean;
     phase: "day-result";
@@ -429,7 +430,7 @@ export default function App() {
       setNightSummaryLines(data.nightSummaryLines ?? []);
       setDetectiveResult(data.detectiveResult);
       if (data.dayResult) {
-        setElimInfo({ name: data.dayResult.eliminatedName, skipped: data.dayResult.skipped, phase: "day-result" });
+        setElimInfo({ name: data.dayResult.eliminatedName, skipped: data.dayResult.skipped, tally: data.dayResult.tally ?? [], phase: "day-result" });
       }
       if (data.winner) {
         setWinner(data.winner);
@@ -474,12 +475,12 @@ export default function App() {
       setDayVotes(data.votes);
     });
 
-    socket.on("chat-message", (data: { id: string; name: string; text: string }) => {
+    socket.on("chat-message", (data: ChatMessage) => {
       if (blockedNamesRef.current.has(data.name)) return;
       setChatMessages((current) => [...current, data]);
     });
 
-    socket.on("chat-history", (data: { messages: { id: string; name: string; text: string }[] }) => {
+    socket.on("chat-history", (data: { messages: ChatMessage[] }) => {
       const blocked = blockedNamesRef.current;
       setChatMessages((data.messages ?? []).filter((m) => !blocked.has(m.name)));
     });
@@ -498,10 +499,10 @@ export default function App() {
 
     socket.on(
       "day-result",
-      (data: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; players: Player[] }) => {
+      (data: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; tally?: VoteTallyEntry[]; players: Player[] }) => {
         setPhase("day-result");
         setPlayers(data.players);
-        setElimInfo({ name: data.eliminatedName, skipped: data.skipped, phase: "day-result" });
+        setElimInfo({ name: data.eliminatedName, skipped: data.skipped, tally: data.tally ?? [], phase: "day-result" });
       },
     );
 
@@ -584,6 +585,17 @@ export default function App() {
 
   const isNightPhase = phase === "night-mafia" || phase === "night-doctor" || phase === "night-detective";
 
+  // Mirrors the server's chat channels: town by day, Mafia-only at night, ghosts for the dead.
+  const amAlive = players.find((p) => p.id === mySocketId)?.alive ?? true;
+  const chatMode: ChatMode =
+    phase === "lobby" || phase === "game-over"
+      ? "town"
+      : !amAlive
+        ? "ghost"
+        : isNightPhase || phase === "night-summary"
+          ? myRole === "mafia" ? "mafia" : "locked"
+          : "town";
+
   return (
     <div className="game-shell min-h-screen text-gray-100 relative z-0">
       <Atmosphere phase={phase} />
@@ -654,6 +666,7 @@ export default function App() {
         <EliminationReveal
           eliminatedName={elimInfo.name}
           skipped={elimInfo.skipped}
+          tally={elimInfo.tally}
         />
       )}
 
@@ -690,11 +703,7 @@ export default function App() {
         <RoomChat
           myName={myName}
           messages={chatMessages}
-          canSend={
-            phase === "lobby" ||
-            phase === "game-over" ||
-            (players.find((p) => p.id === mySocketId)?.alive ?? true)
-          }
+          mode={chatMode}
           onSend={sendChat}
           onReport={reportChat}
           onBlock={blockPlayer}

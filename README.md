@@ -108,7 +108,7 @@ Open **http://localhost:5173** in your browser. That's it — you're in!
 
 ## 🎮 How to Play
 
-### Minimum Players: **3** (7+ adds a second Mafia)
+### Minimum Players: **4** (7+ adds a second Mafia)
 
 ### Game Flow
 
