@@ -17,6 +17,19 @@ import {
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const BCRYPT_ROUNDS = 10;
 
+/** Signup lost a race to another request with the same email. */
+export class EmailTakenError extends Error {
+  constructor() {
+    super("Email already registered");
+    this.name = "EmailTakenError";
+  }
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } } | null;
+  return e?.code === "23505" || e?.cause?.code === "23505";
+}
+
 export class DbUnavailableError extends Error {
   constructor(message = "Database temporarily unavailable") {
     super(message);
@@ -254,20 +267,23 @@ export async function createUser(input: {
   try {
     const db = getDb();
     const createdAt = new Date(input.createdAt);
-    await db.insert(usersTable).values({
-      id: input.id,
-      name: input.name,
-      email: input.email,
-      dob: input.dob ?? null,
-      passwordHash: input.passwordHash,
-      createdAt,
-    });
-    await db.insert(profilesTable).values({
-      userId: input.id,
-      gamesPlayed: 0,
-      wins: 0,
-      losses: 0,
-      updatedAt: createdAt,
+    // One transaction: never leave a user row without its profile.
+    await db.transaction(async (tx) => {
+      await tx.insert(usersTable).values({
+        id: input.id,
+        name: input.name,
+        email: input.email,
+        dob: input.dob ?? null,
+        passwordHash: input.passwordHash,
+        createdAt,
+      });
+      await tx.insert(profilesTable).values({
+        userId: input.id,
+        gamesPlayed: 0,
+        wins: 0,
+        losses: 0,
+        updatedAt: createdAt,
+      });
     });
     return {
       id: input.id,
@@ -278,6 +294,7 @@ export async function createUser(input: {
       createdAt: input.createdAt,
     };
   } catch (err) {
+    if (isUniqueViolation(err)) throw new EmailTakenError();
     throw new DbUnavailableError(err instanceof Error ? err.message : "Database unavailable");
   }
 }

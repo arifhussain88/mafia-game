@@ -20,7 +20,14 @@ if (Test-Path $release) { Remove-Item -Recurse -Force $release }
 New-Item -ItemType Directory -Force -Path $release | Out-Null
 Copy-Item -Recurse (Join-Path $dist "*") $release
 Copy-Item (Join-Path $PSScriptRoot "mafia-wars.service") $release
-Copy-Item (Join-Path $PSScriptRoot "Caddyfile") $release
+# Public hostname for HTTPS (one line in deploy/oracle/game-host). Empty = plain HTTP on :80.
+$hostFile = Join-Path $PSScriptRoot "game-host"
+$gameHost = if (Test-Path $hostFile) { (Get-Content $hostFile -Raw).Trim() } else { "" }
+if ($gameHost -and $gameHost -notmatch '^[A-Za-z0-9.-]+$') { throw "game-host must be a bare hostname, got '$gameHost'" }
+$site = if ($gameHost) { $gameHost } else { ":80" }
+Write-Host "==> Caddy site: $site"
+$caddy = (Get-Content (Join-Path $PSScriptRoot "Caddyfile") -Raw).Replace("{{SITE}}", $site)
+[System.IO.File]::WriteAllText((Join-Path $release "Caddyfile"), ($caddy -replace "`r`n", "`n"))
 
 $tar = Join-Path $PSScriptRoot "mafia-wars-release.tar"
 if (Test-Path $tar) { Remove-Item -Force $tar }

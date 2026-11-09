@@ -14,10 +14,18 @@ import {
 
 type Props = {
   onConfirm: () => void;
+  /** Optional control so the Android back button can open the same dialog. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
-export default function LeaveMatchButton({ onConfirm }: Props) {
-  const [open, setOpen] = useState(false);
+export default function LeaveMatchButton({ onConfirm, open: openProp, onOpenChange }: Props) {
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (next: boolean) => {
+    if (openProp === undefined) setOpenState(next);
+    onOpenChange?.(next);
+  };
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
@@ -36,7 +44,8 @@ export default function LeaveMatchButton({ onConfirm }: Props) {
           <AlertDialogTitle className="font-display text-amber-100">Leave this match?</AlertDialogTitle>
           <AlertDialogDescription className="text-gray-400">
             You will forfeit your seat and cannot rejoin this room. After a short pause the others
-            will be told you left. If you are the only living Mafia, the town wins.
+            will be told you left. If you are the only living Mafia, the town wins. Losing connection
+            is different: you are put back in your seat when you return.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

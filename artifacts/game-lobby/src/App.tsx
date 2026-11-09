@@ -16,6 +16,7 @@ import Atmosphere from "@/components/Atmosphere";
 import LeaveMatchButton from "@/components/LeaveMatchButton";
 import MatchTicker from "@/components/MatchTicker";
 import RoomChat from "@/components/RoomChat";
+import { useBackHandler } from "@/lib/native-bridge";
 import { playNightSting, playDayChime, playMafiaKill, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
@@ -46,6 +47,40 @@ export type GamePhase =
 function isActiveMatchPhase(phase: GamePhase): boolean {
   return phase !== "home" && phase !== "lobby" && phase !== "game-over";
 }
+
+export type Winner = "mafia" | "civilians" | "draw";
+
+/** Remembered so a reconnect or page reload can put us back in our seat. */
+const ROOM_KEY = "mafia-room";
+function saveRoom(code: string) {
+  try { localStorage.setItem(ROOM_KEY, code); } catch {}
+}
+function savedRoom(): string | null {
+  try { return localStorage.getItem(ROOM_KEY); } catch { return null; }
+}
+function forgetRoom() {
+  try { localStorage.removeItem(ROOM_KEY); } catch {}
+}
+
+type RejoinSnapshot = {
+  code: string;
+  name: string;
+  phase: GamePhase;
+  endsAt: number;
+  players: Player[];
+  isHost: boolean;
+  timerSettings?: TimerSettings;
+  myNightVote: string | null;
+  myDoctorVote: string | null;
+  myDetectiveVote: string | null;
+  myDayVote: string | null;
+  dayVotes: Record<string, number>;
+  narration: string | null;
+  nightSummaryLines: string[];
+  dayResult: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean } | null;
+  detectiveResult: { targetName: string; isMafia: boolean } | null;
+  winner: Winner | null;
+};
 
 export default function App() {
   const socketRef = useRef<Socket | null>(null);
@@ -94,7 +129,8 @@ export default function App() {
     phase: "day-result";
   } | null>(null);
 
-  const [winner, setWinner] = useState<"mafia" | "civilians" | null>(null);
+  const [winner, setWinner] = useState<Winner | null>(null);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [gameOverPlayers, setGameOverPlayers] = useState<Player[]>([]);
   const [tickerMessage, setTickerMessage] = useState<string | null>(null);
   const tickerSeqRef = useRef(0);
@@ -117,6 +153,8 @@ export default function App() {
 
   function resetToHome() {
     leaveSentRef.current = true;
+    forgetRoom();
+    setLeaveDialogOpen(false);
     setPhase("home");
     setPlayers([]);
     setRoomCode("");
@@ -149,27 +187,30 @@ export default function App() {
     resetToHome();
   }, []);
 
+  // Closing or reloading the page is a soft disconnect, not a forfeit: the
+  // server holds the seat and we rejoin from the saved room code. Only the
+  // explicit "Leave match" button forfeits. Warn on desktop reload mid-match.
   useEffect(() => {
-    function emitLeaveIfNeeded() {
-      if (!isActiveMatchPhase(phaseRef.current) || leaveSentRef.current) return;
-      leaveSentRef.current = true;
-      socketRef.current?.emit("leave-game");
+    function onBeforeUnload(event: BeforeUnloadEvent) {
+      if (!isActiveMatchPhase(phaseRef.current)) return;
+      event.preventDefault();
     }
-    function onPageHide(event: PageTransitionEvent) {
-      // bfcache / tab switch — treat as soft disconnect, not forfeit
-      if (event.persisted) return;
-      emitLeaveIfNeeded();
-    }
-    function onBeforeUnload() {
-      emitLeaveIfNeeded();
-    }
-    window.addEventListener("pagehide", onPageHide);
     window.addEventListener("beforeunload", onBeforeUnload);
-    return () => {
-      window.removeEventListener("pagehide", onPageHide);
-      window.removeEventListener("beforeunload", onBeforeUnload);
-    };
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
+
+  // Android back (from the app wrapper). Home handles its own sub-screens.
+  useBackHandler(() => {
+    const current = phaseRef.current;
+    if (current === "home") return;
+    if (isActiveMatchPhase(current)) {
+      setLeaveDialogOpen((open) => !open);
+      return;
+    }
+    // Lobby or results: step back out to Home.
+    socketRef.current?.emit("leave-game");
+    resetToHome();
+  });
 
   // Ambient loop on the opening screen, in the lobby, and after the game ends.
   useEffect(() => {
@@ -247,7 +288,13 @@ export default function App() {
     });
     socketRef.current = socket;
 
-    socket.on("connect", () => setMySocketId(socket.id ?? ""));
+    socket.on("connect", () => {
+      setMySocketId(socket.id ?? "");
+      // Every (re)connect gets a new socket id that is in no room yet. If we
+      // were seated somewhere, ask for that seat back.
+      const code = savedRoom();
+      if (code) socket.emit("rejoin-room", { code });
+    });
 
     socket.on("connect_error", (err) => {
       if (err.message === "Unauthorized" || /unauthorized/i.test(err.message)) {
@@ -260,11 +307,18 @@ export default function App() {
         toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
         return;
       }
+      if (/server is full/i.test(err.message)) {
+        toast({ title: "Server is full", description: "Lots of players right now. Retrying shortly…" });
+        return;
+      }
       toast({ title: "Connection issue", description: "Trying to reconnect…" });
     });
 
-    socket.io.on("reconnect", () => {
-      toast({ title: "Back online", description: "Connection restored." });
+    socket.on("rejoin-failed", (data: { message?: string }) => {
+      forgetRoom();
+      if (phaseRef.current === "home") return;
+      resetToHome();
+      toast({ title: "Back at home", description: data?.message ?? "That game is no longer available." });
     });
 
     socket.on("disconnect", (reason) => {
@@ -273,6 +327,7 @@ export default function App() {
     });
 
     socket.on("room-created", (data: { code: string; players: Player[]; isHost: boolean; timerSettings?: TimerSettings }) => {
+      saveRoom(data.code);
       setRoomCode(data.code);
       setPlayers(data.players);
       setIsHost(data.isHost);
@@ -281,6 +336,7 @@ export default function App() {
     });
 
     socket.on("room-joined", (data: { code: string; players: Player[]; isHost: boolean; timerSettings?: TimerSettings }) => {
+      saveRoom(data.code);
       setRoomCode(data.code);
       setPlayers(data.players);
       setIsHost(data.isHost);
@@ -299,6 +355,7 @@ export default function App() {
     });
 
     socket.on("kicked", () => {
+      forgetRoom();
       toast({ title: "Removed", description: "The host removed you from the room.", variant: "destructive" });
       setPhase("home");
       setPlayers([]);
@@ -336,17 +393,36 @@ export default function App() {
       },
     );
 
-    socket.on(
-      "reconnected",
-      (data: { code: string; phase: GamePhase; endsAt: number; players: Player[]; isHost: boolean }) => {
-        setRoomCode(data.code);
-        setPlayers(data.players);
-        setIsHost(data.isHost);
-        setTimerEndsAt(data.endsAt);
-        setPhase(data.phase);
-        toast({ title: "Reconnected", description: "You've rejoined the game." });
-      },
-    );
+    socket.on("reconnected", (data: RejoinSnapshot) => {
+      const wasHome = phaseRef.current === "home";
+      saveRoom(data.code);
+      leaveSentRef.current = false;
+      setRoomCode(data.code);
+      if (data.name) setMyName(data.name);
+      setPlayers(data.players);
+      setIsHost(data.isHost);
+      setTimerEndsAt(data.endsAt);
+      if (data.timerSettings) setTimerSettings(data.timerSettings);
+      setMyNightVote(data.myNightVote);
+      setMyDoctorVote(data.myDoctorVote);
+      setMyDetectiveVote(data.myDetectiveVote);
+      setMyDayVote(data.myDayVote);
+      setDayVotes(data.dayVotes ?? {});
+      setDayNarration(data.narration);
+      setNightSummaryLines(data.nightSummaryLines ?? []);
+      setDetectiveResult(data.detectiveResult);
+      if (data.dayResult) {
+        setElimInfo({ name: data.dayResult.eliminatedName, skipped: data.dayResult.skipped, phase: "day-result" });
+      }
+      if (data.winner) {
+        setWinner(data.winner);
+        setGameOverPlayers(data.players);
+      }
+      setPhase(data.phase);
+      if (isActiveMatchPhase(data.phase) || !wasHome) {
+        toast({ title: "Reconnected", description: "You're back in your seat." });
+      }
+    });
 
     socket.on("night-vote-status", (data: { voted: number; total: number }) => {
       setNightVoteStatus(data);
@@ -412,7 +488,7 @@ export default function App() {
       },
     );
 
-    socket.on("game-over", (data: { winner: "mafia" | "civilians"; players: Player[] }) => {
+    socket.on("game-over", (data: { winner: Winner; players: Player[] }) => {
       setWinner(data.winner);
       setGameOverPlayers(data.players);
       setPhase("game-over");
@@ -583,7 +659,9 @@ export default function App() {
         />
       )}
 
-      {isActiveMatchPhase(phase) && <LeaveMatchButton onConfirm={leaveMatch} />}
+      {isActiveMatchPhase(phase) && (
+        <LeaveMatchButton onConfirm={leaveMatch} open={leaveDialogOpen} onOpenChange={setLeaveDialogOpen} />
+      )}
       {phase !== "home" && (
         <RoomChat
           myName={myName}

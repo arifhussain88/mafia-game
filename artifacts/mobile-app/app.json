@@ -32,16 +32,6 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "plugins": [
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "usesCleartextTraffic": true
-          }
-        }
-      ]
-    ],
     "extra": {
       "gameUrl": "http://141.148.204.30"
     }

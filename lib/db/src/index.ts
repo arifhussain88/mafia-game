@@ -25,6 +25,12 @@ export function getDb(): Db {
   }
   if (!dbInstance) {
     pool = new Pool({ connectionString: url });
+    // Neon drops idle connections when its compute suspends. Without a listener,
+    // pg emits an unhandled 'error' on the pool and Node exits, wiping every
+    // in-memory game. The pool replaces the dead client on next use.
+    pool.on("error", (err) => {
+      console.error("[db] idle client error:", err.message);
+    });
     dbInstance = drizzle(pool, { schema });
   }
   return dbInstance;

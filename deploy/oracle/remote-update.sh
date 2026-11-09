@@ -29,6 +29,18 @@ if [[ -f /opt/mafia-wars/mafia-wars.service ]]; then
   sudo systemctl daemon-reload
 fi
 
+# Oracle Ubuntu images ship iptables rules that REJECT everything except SSH.
+# HTTPS needs 443, and 80 stays open for the Let's Encrypt challenge + redirect.
+# (The OCI VCN security list must allow both too; that part is in the console.)
+echo "==> Ensuring VM firewall allows 80 and 443"
+for PORT in 80 443; do
+  if ! sudo iptables -C INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; then
+    sudo iptables -I INPUT 1 -p tcp --dport "$PORT" -j ACCEPT
+    echo "    opened tcp/$PORT"
+  fi
+done
+if command -v netfilter-persistent >/dev/null 2>&1; then sudo netfilter-persistent save >/dev/null || true; fi
+
 if [[ -f /opt/mafia-wars/Caddyfile ]]; then
   echo "==> Refreshing Caddyfile"
   sudo mv /opt/mafia-wars/Caddyfile /etc/caddy/Caddyfile
@@ -71,6 +83,13 @@ if [[ -f /etc/mafia-wars.env ]]; then
   echo "OK: neon_marker=$MARKER env_on_listener=$ENV_COUNT authStore=neon"
 fi
 
-echo "==> Done. Public: http://$(curl -s ifconfig.me 2>/dev/null || echo 141.148.204.30)/"
+SITE=$(head -n 20 /etc/caddy/Caddyfile | grep -m1 -E '^[^#[:space:]].*\{' | awk '{print $1}')
+if [[ -n "$SITE" && "$SITE" != ":80" ]]; then
+  echo "==> HTTPS check for $SITE (first run may take ~30s while Caddy gets the certificate)"
+  curl -sS -o /dev/null -w "HTTPS %{http_code}\n" "https://$SITE/api/healthz" || echo "HTTPS not ready yet: check 'journalctl -u caddy -n 50' and the OCI security list (80 + 443)."
+  echo "==> Done. Public: https://$SITE/"
+else
+  echo "==> Done. Public: http://$(curl -s ifconfig.me 2>/dev/null || echo 141.148.204.30)/"
+fi
 echo "Accounts file untouched: /data/users.json"
 echo "Note: updating the unit file alone does not update index.mjs - this script replaces /opt/mafia-wars."

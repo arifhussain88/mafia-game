@@ -1,6 +1,7 @@
 import { useState } from "react";
 import HowToPlay from "@/components/HowToPlay";
 import { startAmbientLoop, stopAmbientLoop, unlockAudio } from "@/lib/audio";
+import { requestAppExit, useBackHandler } from "@/lib/native-bridge";
 
 type Props = {
   onCreateRoom: (name: string) => void;
@@ -42,6 +43,16 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePass, setDeletePass] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // Android back: close the innermost open panel; on the root screen, exit the app.
+  useBackHandler(() => {
+    setError("");
+    if (howToPlayOpen) setHowToPlayOpen(false);
+    else if (deleteOpen) { setDeleteOpen(false); setDeletePass(""); }
+    else if (authMode !== "idle") setAuthMode("idle");
+    else if (view !== "main") { setView("main"); setCode(""); }
+    else requestAppExit();
+  });
 
   function handleCreate() {
     const trimmed = name.trim();

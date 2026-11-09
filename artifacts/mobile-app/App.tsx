@@ -12,11 +12,12 @@ import {
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { WebView as RNWebView, type WebViewNavigation } from 'react-native-webview';
+import { WebView as RNWebView } from 'react-native-webview';
 import type {
   ShouldStartLoadRequest,
   WebViewErrorEvent,
   WebViewHttpErrorEvent,
+  WebViewMessageEvent,
 } from 'react-native-webview/lib/WebViewTypes';
 
 // react-native-webview declares `class WebView<P = undefined>` and its props as
@@ -44,47 +45,65 @@ const GAME_URL = (
   'http://141.148.204.30'
 ).replace(/\/+$/, '');
 
-const GAME_ORIGIN = (() => {
-  const match = GAME_URL.match(/^(https?:\/\/[^/]+)/i);
-  return match ? match[1].toLowerCase() : GAME_URL.toLowerCase();
-})();
+/** "scheme://host[:port]" lowercased, or null. Regex, since RN's URL polyfill lacks `host`. */
+function originOf(url: string): string | null {
+  const match = url.match(/^(https?):\/\/([^/?#]+)/i);
+  return match ? `${match[1]}://${match[2]}`.toLowerCase() : null;
+}
+
+const GAME_ORIGIN = originOf(GAME_URL) ?? GAME_URL.toLowerCase();
 
 const BG = '#0b0b0f';
 const ACCENT = '#d97706';
+const BRAND = (Constants.expoConfig?.name ?? 'Mafia').toUpperCase();
 
+/** Exact origin match: "https://game.example.com.evil.io" must not pass for the game. */
 function isGameUrl(url: string) {
-  return url.toLowerCase().startsWith(GAME_ORIGIN);
+  return originOf(url) === GAME_ORIGIN;
 }
+
+/** Static pages on the game host (privacy, terms, delete-account) open in the system browser. */
+function isStaticPage(url: string) {
+  return /\.html?(?:[?#]|$)/i.test(url.replace(/^https?:\/\/[^/?#]+/i, ''));
+}
+
+// Hands Android back to the page, which closes panels, steps out of the lobby,
+// or asks "Leave match?" — never a WebView history jump that unloads the game.
+const DISPATCH_BACK = `window.dispatchEvent(new Event('mafia-back')); true;`;
 
 export default function App() {
   const webRef = useRef<WebViewRef>(null);
-  const canGoBackRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const failedRef = useRef<string | null>(null);
+  failedRef.current = failed;
 
-  // Android hardware back: go back inside the game (e.g. from Privacy page) instead of closing the app.
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (canGoBackRef.current) {
-        webRef.current?.goBack();
-        return true;
-      }
-      return false;
+      // Error screen: let back close the app normally.
+      if (failedRef.current || !webRef.current) return false;
+      webRef.current.injectJavaScript(DISPATCH_BACK);
+      return true;
     });
     return () => sub.remove();
   }, []);
 
-  const onNavChange = useCallback((nav: WebViewNavigation) => {
-    canGoBackRef.current = nav.canGoBack;
+  const onMessage = useCallback((event: WebViewMessageEvent) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data) as { type?: string };
+      if (msg.type === 'exit') BackHandler.exitApp();
+    } catch {
+      // Not ours; ignore.
+    }
   }, []);
 
-  // Keep the game inside the app; send mailto:, tel: and other sites to the system.
+  // Keep the game inside the app; send legal pages, mailto:, tel: and other sites to the system.
   const onShouldStart = useCallback((req: ShouldStartLoadRequest) => {
     const { url } = req;
     if (url.startsWith('about:') || url.startsWith('data:') || url.startsWith('blob:')) return true;
-    if (isGameUrl(url)) return true;
+    if (isGameUrl(url) && !isStaticPage(url)) return true;
     void Linking.openURL(url).catch(() => {});
     return false;
   }, []);
@@ -126,7 +145,7 @@ export default function App() {
             // Game sounds/music start after a tap; allow autoplay of follow-up sounds.
             mediaPlaybackRequiresUserAction={false}
             allowsInlineMediaPlayback
-            // target="_blank" links (Privacy/Terms) open in the same view; back button returns.
+            // target="_blank" links go through onShouldStart (system browser for legal pages).
             setSupportMultipleWindows={false}
             mixedContentMode="never"
             overScrollMode="never"
@@ -135,7 +154,7 @@ export default function App() {
             textZoom={100}
             applicationNameForUserAgent="MafiaWarsApp/1.0"
             onShouldStartLoadWithRequest={onShouldStart}
-            onNavigationStateChange={onNavChange}
+            onMessage={onMessage}
             onLoadEnd={() => setLoading(false)}
             onError={(e: WebViewErrorEvent) => setFailed(e.nativeEvent.description || 'Network error')}
             onHttpError={(e: WebViewHttpErrorEvent) => {
@@ -143,7 +162,8 @@ export default function App() {
                 setFailed(`Server error ${e.nativeEvent.statusCode}`);
               }
             }}
-            // Android may kill the WebView renderer in the background; recover instead of a blank screen.
+            // Android may kill the WebView renderer in the background; reload instead of a blank
+            // screen. The page remembers its room and rejoins the seat on load.
             onRenderProcessGone={() => retry()}
             onContentProcessDidTerminate={() => webRef.current?.reload()}
           />
@@ -151,7 +171,7 @@ export default function App() {
 
         {loading && !failed ? (
           <View style={styles.loader} pointerEvents="none">
-            <Text style={styles.brand}>MAFIA WARS</Text>
+            <Text style={styles.brand}>{BRAND}</Text>
             <ActivityIndicator size="large" color={ACCENT} />
           </View>
         ) : null}

@@ -7,6 +7,7 @@ import {
   DbUnavailableError,
   deleteSession,
   deleteUserAccount,
+  EmailTakenError,
   ensureTestUser,
   findUserByEmail,
   getUserForToken,
@@ -15,6 +16,7 @@ import {
   updatePasswordHash,
   verifyPassword,
 } from "../lib/user-store";
+import { forgetUser } from "../socket-handlers";
 
 const router = Router();
 
@@ -26,10 +28,47 @@ const TEST_USERS = [
   { email: "civilian@test.local", name: "Civilian" },
 ];
 
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const RATE_WINDOW_MS = 15 * 60 * 1000;
-const RATE_MAX = 10;
-const MAX_USERS = 500;
+/**
+ * Only *failed* attempts count, so a group of friends on one Wi-Fi can all sign
+ * in. Per-email keeps password guessing slow; per-IP is looser for shared NAT.
+ */
+const MAX_FAILS_PER_EMAIL = 10;
+const MAX_FAILS_PER_IP = 40;
+/** New accounts per IP per window (spam signups), roomy enough for a party. */
+const MAX_SIGNUPS_PER_IP = 20;
+/**
+ * Safety cap on total accounts. Accounts live in Neon, not on the Oracle VM, so
+ * this only guards Neon free-tier storage (a row is well under 1 KB).
+ */
+const MAX_USERS = Number(process.env.MAX_USERS) > 0 ? Number(process.env.MAX_USERS) : 50_000;
+
+const counters = new Map<string, { count: number; resetAt: number }>();
+
+function hits(key: string): number {
+  const entry = counters.get(key);
+  if (!entry || Date.now() > entry.resetAt) return 0;
+  return entry.count;
+}
+
+function bump(key: string) {
+  const now = Date.now();
+  const entry = counters.get(key);
+  if (!entry || now > entry.resetAt) counters.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
+  else entry.count += 1;
+}
+
+function tooManyFails(ip: string, email?: string) {
+  if (hits(`fail-ip:${ip}`) >= MAX_FAILS_PER_IP) return true;
+  return email ? hits(`fail-email:${email}`) >= MAX_FAILS_PER_EMAIL : false;
+}
+
+function recordFail(ip: string, email?: string) {
+  bump(`fail-ip:${ip}`);
+  if (email) bump(`fail-email:${email}`);
+}
+
+const TOO_MANY = { message: "Too many attempts. Try again in a few minutes." };
 
 function clientIp(req: { ip?: string }) {
   // app sets "trust proxy" to loopback, so req.ip is the real client behind Caddy
@@ -37,21 +76,10 @@ function clientIp(req: { ip?: string }) {
   return req.ip || "unknown";
 }
 
-function rateLimited(ip: string) {
-  const now = Date.now();
-  const entry = loginAttempts.get(ip);
-  if (!entry || now > entry.resetAt) {
-    loginAttempts.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > RATE_MAX;
-}
-
 // Drop expired rate-limit entries so the map cannot grow forever.
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, entry] of loginAttempts) if (now > entry.resetAt) loginAttempts.delete(ip);
+  for (const [key, entry] of counters) if (now > entry.resetAt) counters.delete(key);
 }, 5 * 60 * 1000).unref();
 
 function isTestEmail(email: string) {
@@ -88,7 +116,7 @@ function bearerToken(req: { headers: { authorization?: string } }) {
 
 router.post("/signup", async (req, res) => {
   const ip = clientIp(req);
-  if (rateLimited(ip)) return res.status(429).json({ message: "Too many attempts. Try again later." });
+  if (hits(`signup:${ip}`) >= MAX_SIGNUPS_PER_IP) return res.status(429).json(TOO_MANY);
 
   const { name, email, password, dob } = req.body ?? {};
   if (!name || !email || !password || !dob) return res.status(400).json({ message: "name, email, password and dob required" });
@@ -109,7 +137,7 @@ router.post("/signup", async (req, res) => {
     if (total >= MAX_USERS) {
       return res.status(503).json({ message: "Signup is temporarily closed. Try again later." });
     }
-    const exists = await findUserByEmail(emailStr);
+    const exists = await findUserByEmail(emailStr.toLowerCase());
     if (exists) return res.status(409).json({ message: "Email already registered" });
 
     const id = crypto.randomUUID();
@@ -122,9 +150,11 @@ router.post("/signup", async (req, res) => {
       passwordHash,
       createdAt: new Date().toISOString(),
     });
+    bump(`signup:${ip}`);
     const token = await createAuthSession(id);
     return res.json({ user: publicUser(user), token });
   } catch (err) {
+    if (err instanceof EmailTakenError) return res.status(409).json({ message: "Email already registered" });
     if (isDbDown(err)) {
       return res.status(503).json({ message: "Service temporarily unavailable. Try again." });
     }
@@ -134,21 +164,21 @@ router.post("/signup", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   const ip = clientIp(req);
-  if (rateLimited(ip)) return res.status(429).json({ message: "Too many attempts. Try again later." });
-
   const { email, password } = req.body ?? {};
   if (!email || !password) return res.status(400).json({ message: "email and password required" });
   const normalizedEmail = String(email).trim().toLowerCase();
+  if (tooManyFails(ip, normalizedEmail)) return res.status(429).json(TOO_MANY);
   if (process.env.NODE_ENV === "production" && isTestEmail(normalizedEmail)) {
     return res.status(403).json({ message: "Test accounts are disabled" });
   }
 
   try {
     const user = await findUserByEmail(normalizedEmail);
-    if (!user) return res.status(401).json({ message: "Invalid credentials" });
-
-    const ok = await verifyPassword(String(password), user.passwordHash);
-    if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+    const ok = user ? await verifyPassword(String(password), user.passwordHash) : false;
+    if (!user || !ok) {
+      recordFail(ip, normalizedEmail);
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
     if (/^[a-f0-9]{64}$/i.test(user.passwordHash)) {
       const nextHash = await hashPassword(String(password));
@@ -185,7 +215,7 @@ router.post("/logout", async (req, res) => {
  */
 router.post("/delete-account", async (req, res) => {
   const ip = clientIp(req);
-  if (rateLimited(ip)) return res.status(429).json({ message: "Too many attempts. Try again later." });
+  if (tooManyFails(ip)) return res.status(429).json(TOO_MANY);
 
   const token = bearerToken(req);
   const { password } = req.body ?? {};
@@ -194,10 +224,17 @@ router.post("/delete-account", async (req, res) => {
   try {
     const user = await getUserForToken(token);
     if (!user) return res.status(401).json({ message: "Please sign in again" });
+    if (tooManyFails(ip, user.email)) return res.status(429).json(TOO_MANY);
     const ok = await verifyPassword(String(password), user.passwordHash);
-    if (!ok) return res.status(401).json({ message: "Incorrect password" });
+    if (!ok) {
+      recordFail(ip, user.email);
+      return res.status(401).json({ message: "Incorrect password" });
+    }
 
     await deleteUserAccount(user.id);
+    // Live seats must stop pointing at the deleted account, or saving the
+    // match (and everyone else's stats) fails on the foreign key.
+    forgetUser(user.id);
     req.log?.info({ userId: user.id }, "Account deleted");
     return res.json({ ok: true });
   } catch (err) {

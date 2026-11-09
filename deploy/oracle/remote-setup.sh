@@ -58,6 +58,14 @@ fi
 NODE_BIN="$(command -v node)"
 sudo sed -i "s|/usr/bin/node|${NODE_BIN}|g" /etc/systemd/system/mafia-wars.service
 
+echo "==> Ensuring VM firewall allows 80 and 443 (Oracle images reject them by default)"
+for PORT in 80 443; do
+  if ! sudo iptables -C INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; then
+    sudo iptables -I INPUT 1 -p tcp --dport "$PORT" -j ACCEPT
+  fi
+done
+if command -v netfilter-persistent >/dev/null 2>&1; then sudo netfilter-persistent save >/dev/null || true; fi
+
 echo "==> Enable services"
 sudo systemctl daemon-reload
 sudo systemctl enable --now mafia-wars

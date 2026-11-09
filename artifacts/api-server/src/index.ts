@@ -31,7 +31,21 @@ const io = new SocketIOServer(httpServer, {
 
 registerSocketHandlers(io);
 
-httpServer.listen(port, "0.0.0.0", () => {
+// A stray throw must never take down the process: every room lives in memory,
+// so a crash ends every match in progress. Log and keep serving.
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Unhandled promise rejection");
+});
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "Uncaught exception");
+});
+
+// In production only Caddy (same host) should reach Node; bind to loopback so
+// port 8080 is never exposed directly even if a firewall rule opens it.
+const host =
+  process.env.HOST?.trim() || (process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0");
+
+httpServer.listen(port, host, () => {
   const authStore = hasDatabaseUrl() ? "neon" : "json";
-  logger.info({ port, host: "0.0.0.0", authStore }, "Server listening");
+  logger.info({ port, host, authStore }, "Server listening");
 });

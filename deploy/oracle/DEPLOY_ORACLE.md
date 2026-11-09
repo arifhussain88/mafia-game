@@ -3,7 +3,7 @@
 **Live URL:** http://141.148.204.30/  
 **Production branch:** `feature/done-live`  
 **Runtime on the VM:** Node.js 22 + systemd (`mafia-wars`) + Caddy on `:80` → `127.0.0.1:8080`  
-**Not used on Oracle:** Docker. The repo `Dockerfile` was for Fly.io (app destroyed). Do not run Docker on this Always Free micro unless you intentionally change the stack.
+**Not used:** Docker. Node runs directly under systemd; keep it that way on the Always Free micro.
 
 Scripts in this folder were first committed on `feature/oracle-cutover` (`da470cf` / `a32e398`). Keep them on `feature/done-live` so deploy steps are never orphaned on another branch again.
 
@@ -17,7 +17,7 @@ Scripts in this folder were first committed on `feature/oracle-cutover` (`da470c
 | Accounts | Neon when `DATABASE_URL` is set; else `/data/users.json` | `USERS_FILE=/data/users.json` kept as fallback — **do not overwrite on updates** |
 | DB secret | `/etc/mafia-wars.env` | Optional `DATABASE_URL` (direct Neon URL, not pooler). Mode `600`. Never commit. |
 | Node service | `mafia-wars.service` | `PORT=8080`, `STATIC_DIR=/opt/mafia-wars/public`, `EnvironmentFile=-/etc/mafia-wars.env` |
-| Reverse proxy | Caddy `/etc/caddy/Caddyfile` | `:80` → `127.0.0.1:8080` (HTTP until you have a domain) |
+| Reverse proxy | Caddy `/etc/caddy/Caddyfile` | `<game-host>` (HTTPS, auto certificate) or `:80` → `127.0.0.1:8080` |
 | Swap | `/swapfile` (2G file on boot disk) | Not an OCI Block Volume; stays Always Free |
 
 SSH (from your Windows machine):
@@ -31,13 +31,28 @@ Key file: `~/.ssh/oracle_mafia` (passphrase-protected). Agent shell cannot enter
 
 ---
 
+## HTTPS on a free subdomain (DuckDNS)
+
+The app and Play Store build should use HTTPS. A free DuckDNS name gets a real Let’s Encrypt certificate, exactly like a paid domain.
+
+1. Sign in at https://www.duckdns.org, create a subdomain (e.g. `mafiagame`), and set its IP to `141.148.204.30`.
+2. Check it resolves: `nslookup mafiagame.duckdns.org` should return `141.148.204.30`.
+3. Make sure the OCI security list allows TCP **80 and 443** (section A.1). The update script opens them in iptables.
+4. Put the hostname in `deploy/oracle/game-host` (one line, no `https://`), commit it, then pack and deploy as in section B. Caddy gets the certificate on first start (allow ~30s).
+5. Check: `curl -I https://mafiagame.duckdns.org/api/healthz` returns 200.
+6. Point the app at it: in `artifacts/mobile-app/app.json` set `expo.extra.gameUrl` to `https://mafiagame.duckdns.org`. `app.config.js` then turns Android cleartext off automatically.
+
+Moving to a paid domain later is the same steps with the new name, plus an app update. Logins are stored per site, so players sign in once more after a host change.
+
+---
+
 ## A. First-time setup (already done on live VM)
 
 Only needed on a **new** Always Free Ubuntu VM.
 
-### 1. Open OCI security list / iptables for 80 (and 443 later)
+### 1. Open OCI security list for 80 and 443
 
-Allow TCP 80 (and 443 when you add HTTPS) on the VCN security list and on the VM firewall if enabled.
+In the OCI console, add ingress rules for TCP 80 and 443 (source `0.0.0.0/0`) to the VCN security list. The setup and update scripts open the same ports in the VM iptables.
 
 ### 2. On your Windows PC (repo root)
 
@@ -167,7 +182,8 @@ sudo systemctl restart mafia-wars
 | `remote-setup.sh` | VM: first-time install (Node, Caddy, swap, extract, enable services) |
 | `remote-update.sh` | VM: extract new tarball and restart (keeps `/data`) |
 | `mafia-wars.service` | systemd unit packaged into the tarball |
-| `Caddyfile` | reverse proxy packaged into the tarball |
+| `Caddyfile` | reverse proxy template; `{{SITE}}` is filled from `game-host` |
+| `game-host` | one line: the public hostname for HTTPS (empty = HTTP on `:80`) |
 | `.gitignore` | ignores `release/` and `*.tar` |
 
 ---
@@ -177,7 +193,8 @@ sudo systemctl restart mafia-wars
 - Stay on the existing Always Free shape only.
 - Do **not** create paid OCI Block Volumes, load balancers, extra reserved public IPs, Autonomous DB, or Object Storage for this app.
 - Swap is a **file** on the free boot disk, not a new volume.
-- When adding a domain later: point DNS at `141.148.204.30`, change Caddy from `:80` to the domain, then enable HTTPS (Let’s Encrypt).
+- Capacity is capped in the app, not by accounts: `MAX_SOCKETS` (default 400), `MAX_OPEN_ROOMS` (150), `MAX_SOCKETS_PER_IP` (30). Set them in `/etc/mafia-wars.env` if the box can take more; the journal logs a `Load` line with live room/socket counts.
+- Oracle can reclaim Always Free VMs that sit idle for a long time. Real traffic prevents it; check the console if the game ever stops answering.
 
 ---
 

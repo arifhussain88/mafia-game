@@ -45,7 +45,8 @@ export function persistChatMessage(input: {
 /** Emit already happened — never await this on the hot path. */
 export function persistMatchEnd(input: {
   roomCode: string;
-  winner: "mafia" | "civilians";
+  /** "draw" when the match stalled out with no deaths (nobody wins). */
+  winner: "mafia" | "civilians" | "draw";
   players: PersistPlayer[];
 }) {
   if (!hasDatabaseUrl()) return;

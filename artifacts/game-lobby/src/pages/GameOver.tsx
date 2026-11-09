@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import type { Player, Role } from "@/App";
+import type { Player, Role, Winner } from "@/App";
 import PlayerCircle from "@/components/PlayerCircle";
 import { useCircleSize } from "@/hooks/useCircleSize";
 
 type Props = {
-  winner: "mafia" | "civilians";
+  winner: Winner;
   players: Player[];
   mySocketId: string;
   isHost: boolean;
@@ -34,6 +34,7 @@ export default function GameOver({ winner, players, mySocketId, isHost, onPlayAg
   }, []);
 
   const mafiaWon = winner === "mafia";
+  const isDraw = winner === "draw";
   const mafiaIds = players.filter((p) => p.role === "mafia").map((p) => p.id);
   const myRole = players.find((p) => p.id === mySocketId)?.role ?? null;
 
@@ -57,13 +58,19 @@ export default function GameOver({ winner, players, mySocketId, isHost, onPlayAg
           }`}
           style={{ opacity: showResult ? 1 : 0 }}
         >
-          <h1 className={`font-display text-3xl md:text-4xl font-bold mb-1 ${mafiaWon ? "text-red-400" : "text-amber-400"}`}>
-            {mafiaWon ? "Mafia Wins" : "Town Wins"}
+          <h1
+            className={`font-display text-3xl md:text-4xl font-bold mb-1 ${
+              isDraw ? "text-gray-300" : mafiaWon ? "text-red-400" : "text-amber-400"
+            }`}
+          >
+            {isDraw ? "Stalemate" : mafiaWon ? "Mafia Wins" : "Town Wins"}
           </h1>
           <p className="text-gray-500 text-xs md:text-sm leading-relaxed">
-            {mafiaWon
-              ? "The Mafia seized control of the town."
-              : "The civilians uncovered and eliminated all Mafia."}
+            {isDraw
+              ? "Three rounds passed without a death. Nobody wins this one."
+              : mafiaWon
+                ? "The Mafia seized control of the town."
+                : "The civilians uncovered and eliminated all Mafia."}
           </p>
         </div>
       )}
