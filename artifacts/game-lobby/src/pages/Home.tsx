@@ -140,10 +140,10 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
             <header className="text-center mb-5">
               <h1 className="font-display text-5xl font-bold tracking-tight mb-2 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
                 <span className="bg-gradient-to-b from-amber-200 to-amber-600 bg-clip-text text-transparent">
-                  Mafia Wars
+                  Mafia
                 </span>
               </h1>
-              <p className="text-amber-200/70 text-xs uppercase tracking-[0.22em]">The Town has a problem</p>
+              <p className="text-amber-200/70 text-xs uppercase tracking-[0.22em]">Town has a problem</p>
             </header>
 
             {user ? (

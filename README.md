@@ -1,4 +1,4 @@
-# 🎭 Mafia Wars
+# 🎭 Mafia: Town Has a Problem
 
 A real-time multiplayer social deduction game built with React, Socket.IO, and Express. Players are secretly assigned roles — **Mafia**, **Doctor**, **Detective**, or **Civilian** — and must figure out who is who before the Mafia eliminates everyone.
 

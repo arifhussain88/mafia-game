@@ -1,4 +1,4 @@
-# Mafia Wars Expo Guide
+# Mafia Town (Expo) Guide
 
 This guide covers running the Expo React Native mobile app from Windows. The app is located in `artifacts/mobile-app`.
 

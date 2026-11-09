@@ -1,4 +1,6 @@
-# Oracle Always Free — deploy Mafia Wars
+# Oracle Always Free — deploy Mafia: Town Has a Problem
+
+Internal names stay `mafia-wars` (systemd unit, `/opt/mafia-wars`, release tarball, Neon project) so existing servers keep working.
 
 **Live URL:** http://141.148.204.30/  
 **Production branch:** `main`, deployed automatically by GitHub Actions on every push or merged PR (see "GitHub Actions" below)  

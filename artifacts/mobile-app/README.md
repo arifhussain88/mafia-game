@@ -1,4 +1,4 @@
-# Mafia Wars — Android app (Expo)
+# Mafia: Town Has a Problem — Android app (Expo)
 
 The game is the React web app in `artifacts/game-lobby`, served by `artifacts/api-server`.
 This Expo app opens that game in a full-screen WebView. You get one codebase: what works in
