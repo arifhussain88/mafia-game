@@ -189,8 +189,45 @@ describe("table rules and chat channels", () => {
       const byVoter = Object.fromEntries(result.tally.map((e) => [e.voter, e.target]));
       assert.deepEqual(byVoter, { Mafia: "skip", Doctor: "Mafia", Detective: "Mafia" });
       assert.ok(!("Civilian" in byVoter), "the dead don't appear in the tally");
+
+      // The Mafia are gone: town wins, and each player's profile tells their story.
+      await waitFor(Doctor, "game-over");
+      await sleep(300);
+      const profile = async (who) => {
+        const res = await fetch(`${server.base}/api/profile/me`, { headers: { authorization: `Bearer ${t.tokens[who]}` } });
+        assert.equal(res.status, 200);
+        return res.json();
+      };
+      const det = await profile("Detective");
+      assert.equal(det.recent[0].result, "won");
+      assert.equal(det.recent[0].outcome, "survived");
+      assert.equal(det.best.role, "detective");
+      assert.match(det.best.highlight, /caught the Mafia/);
+      const civ = await profile("Civilian");
+      assert.equal(civ.recent[0].outcome, "killed night 1");
+      assert.equal(civ.recent[0].result, "won");
+      const maf = await profile("Mafia");
+      assert.equal(maf.recent[0].outcome, "voted out day 1");
+      assert.equal(maf.recent[0].result, "lost");
     } finally {
       t.closeAll();
     }
+  });
+});
+
+describe("profile", () => {
+  test("needs a login, and a new player starts empty", async () => {
+    assert.equal((await fetch(`${server.base}/api/profile/me`)).status, 401);
+    const res = await fetch(`${server.base}/api/auth/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Newbie", email: `newbie.${Date.now()}@example.test`, password: "correct-horse-1", dob: "1990-01-01" }),
+    });
+    const { token } = await res.json();
+    const me = await (await fetch(`${server.base}/api/profile/me`, { headers: { authorization: `Bearer ${token}` } })).json();
+    assert.equal(me.name, "Newbie");
+    assert.equal(me.totals.games, 0);
+    assert.equal(me.best, null);
+    assert.deepEqual(me.recent, []);
   });
 });

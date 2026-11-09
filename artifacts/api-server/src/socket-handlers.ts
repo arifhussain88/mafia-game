@@ -230,6 +230,22 @@ interface Room {
   winner: Winner | null;
   nightHadDeath: boolean;
   quietRounds: number;
+  /** 1-based night/day number, for "killed night 2" style match stories. */
+  round: number;
+  /** What happened to each seat this match (keyed by seatKey), saved with the result. */
+  matchLog: Map<string, SeatLog>;
+}
+
+type SeatLog = { fate?: string; saves: number; mafiaFound: number; kills: number };
+
+function logFor(room: Room, p: Player): SeatLog {
+  const key = seatKey(p);
+  let entry = room.matchLog.get(key);
+  if (!entry) {
+    entry = { saves: 0, mafiaFound: 0, kills: 0 };
+    room.matchLog.set(key, entry);
+  }
+  return entry;
 }
 
 function seatKey(p: Player): string {
@@ -482,6 +498,7 @@ function applyForfeit(io: Server, code: string, playerId: string) {
   player.isHost = false;
   clearPlayerActions(room, playerId);
   room.forfeited.add(seatKey(player));
+  logFor(room, player).fate ??= "left the match";
 
   if (wasHost) transferHost(room);
 
@@ -568,6 +585,8 @@ function startMatchCountdown(io: Server, code: string) {
   room.phase = "match-countdown";
   room.winner = null;
   room.quietRounds = 0;
+  room.round = 0;
+  room.matchLog = new Map();
   room.nightHadDeath = false;
   room.dayNarration = "";
   room.nightSummaryLines = [];
@@ -624,6 +643,7 @@ function startNightMafia(io: Server, code: string) {
 
   clearRoomTimer(room);
   room.phase = "night-mafia";
+  room.round += 1;
   room.nightVotes = new Map();
   room.doctorProtect = new Map();
   room.detectiveInvestigate = new Map();
@@ -733,7 +753,14 @@ function resolveNight(io: Server, code: string) {
     if (target) {
       target.alive = false;
       eliminatedName = target.name;
+      logFor(room, target).fate = `killed night ${room.round}`;
+      for (const m of livingMafia(room)) logFor(room, m).kills += 1;
     }
+  }
+  if (wasProtected) {
+    const doctorId = Array.from(room.doctorProtect.keys())[0];
+    const doctor = doctorId ? room.players.get(doctorId) : undefined;
+    if (doctor) logFor(room, doctor).saves += 1;
   }
 
   // Store brief narration for day-discussion header
@@ -868,6 +895,7 @@ function resolveDay(io: Server, code: string) {
     if (target) {
       target.alive = false;
       eliminatedName = target.name;
+      logFor(room, target).fate = `voted out day ${room.round}`;
     }
   }
 
@@ -914,12 +942,19 @@ function endGame(io: Server, code: string, winner: Winner) {
   persistMatchEnd({
     roomCode: code,
     winner,
-    players: Array.from(room.players.values()).map((p) => ({
-      userId: p.userId,
-      name: p.name,
-      role: p.role,
-      alive: p.alive,
-    })),
+    players: Array.from(room.players.values()).map((p) => {
+      const log = logFor(room, p);
+      return {
+        userId: p.userId,
+        name: p.name,
+        role: p.role,
+        alive: p.alive,
+        outcome: log.fate ?? "survived",
+        saves: log.saves,
+        mafiaFound: log.mafiaFound,
+        kills: log.kills,
+      };
+    }),
   });
 
   logger.info({ code, winner }, "Game over");
@@ -1237,6 +1272,8 @@ function newRoom(code: string, host: Player): Room {
     winner: null,
     nightHadDeath: false,
     quietRounds: 0,
+    round: 0,
+    matchLog: new Map(),
   };
 }
 
@@ -1754,6 +1791,7 @@ export function registerSocketHandlers(io: Server) {
         // Send investigation result immediately and privately
         const result = { targetName: target.name, isMafia: target.role === "mafia" };
         room.detectiveResult = { detectiveId: socket.id, ...result };
+        if (result.isMafia) logFor(room, detective).mafiaFound += 1;
         socket.emit("detective-result", result);
         logger.info({ code, isMafia: result.isMafia }, "Detective result sent");
 

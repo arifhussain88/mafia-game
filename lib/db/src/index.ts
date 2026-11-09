@@ -60,6 +60,11 @@ export async function ensureSchema(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS reports_created_at_idx ON reports (created_at);
+    ALTER TABLE match_players ADD COLUMN IF NOT EXISTS outcome text;
+    ALTER TABLE match_players ADD COLUMN IF NOT EXISTS saves integer NOT NULL DEFAULT 0;
+    ALTER TABLE match_players ADD COLUMN IF NOT EXISTS mafia_found integer NOT NULL DEFAULT 0;
+    ALTER TABLE match_players ADD COLUMN IF NOT EXISTS kills integer NOT NULL DEFAULT 0;
+    CREATE INDEX IF NOT EXISTS match_players_user_idx ON match_players (user_id);
   `);
 }
 

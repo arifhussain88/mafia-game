@@ -5,6 +5,7 @@ import { startAmbientLoop, stopAmbientLoop, unlockAudio } from "@/lib/audio";
 import { AuthError, clearSession, postAuth, saveSession, type AuthUser } from "@/lib/auth-api";
 import { requestAppExit, useBackHandler } from "@/lib/native-bridge";
 import { takeInviteCode } from "@/lib/invite";
+import { ProfileScreen, ProfileStrip, useProfile } from "@/components/profile/Profile";
 
 type Props = {
   onCreateRoom: (name: string) => void;
@@ -13,7 +14,7 @@ type Props = {
   onLogout?: () => void;
 };
 
-type View = "main" | "create" | "join";
+type View = "main" | "create" | "join" | "profile";
 
 const inputCls =
   "w-full min-h-[52px] px-4 rounded-xl bg-black/55 ring-1 ring-white/12 text-white placeholder-gray-600 text-base focus:outline-none focus:ring-2 focus:ring-amber-500/70 transition-shadow";
@@ -50,6 +51,8 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePass, setDeletePass] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // Refetch stats each time you come back to the main screen (e.g. after a match).
+  const profile = useProfile(user ? readToken() : null, `${user?.id}:${view === "main" || view === "profile"}`);
 
   // Android back: close the innermost open panel; on the root screen, exit the app.
   useBackHandler(() => {
@@ -155,19 +158,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
 
             {user ? (
               <>
-                <div className="mb-5 flex items-center justify-between rounded-xl bg-black/40 px-4 py-3 ring-1 ring-white/10">
-                  <div className="min-w-0">
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Signed in</p>
-                    <p className="truncate font-semibold text-white">{user.name}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded-lg px-3 py-2 text-sm text-gray-400 hover:text-white cursor-pointer"
-                    onClick={handleLogout}
-                  >
-                    Log out
-                  </button>
-                </div>
+                <ProfileStrip name={user.name} data={profile.data} onOpen={() => goTo("profile")} />
                 <div className="flex flex-col gap-3">
                   <button type="button" onClick={() => goTo("create")} className={`${primaryBtn} cursor-pointer`}>
                     Create Room
@@ -235,6 +226,16 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
               How to play
             </button>
           </div>
+        )}
+
+        {view === "profile" && user && !deleteOpen && (
+          <ProfileScreen
+            name={user.name}
+            data={profile.data}
+            failed={profile.failed}
+            onBack={() => goTo("main")}
+            onLogout={() => void handleLogout()}
+          />
         )}
 
         {deleteOpen && user && (

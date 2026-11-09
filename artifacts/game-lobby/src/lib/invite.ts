@@ -38,8 +38,11 @@ export type ShareResult = "shared" | "copied" | "failed";
 
 /** Open the phone's share sheet (app or browser); fall back to copying the text. */
 export async function shareInvite(code: string): Promise<ShareResult> {
-  const link = inviteLink(code);
-  const text = `Join my Mafia game! Room code ${code}`;
+  return shareText(`Join my Mafia game! Room code ${code}`, inviteLink(code));
+}
+
+/** Share any text + link via the app share sheet, the Web Share API, or the clipboard. */
+export async function shareText(text: string, link: string): Promise<ShareResult> {
   if (isInNativeApp()) {
     (window as NativeWindow).ReactNativeWebView?.postMessage(
       JSON.stringify({ type: "share", message: `${text}\n${link}` }),

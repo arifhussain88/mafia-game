@@ -67,6 +67,30 @@ export type UserStore = {
   sessions: Record<string, { userId: string; createdAt: string }>;
   /** JSON-mode (local dev / tests) copy of the reports table. */
   reports?: StoredReport[];
+  /** JSON-mode copy of finished matches (newest last). */
+  matches?: StoredMatch[];
+};
+
+export type StoredMatchPlayer = {
+  id: string;
+  matchId: string;
+  userId: string | null;
+  name: string;
+  role: string | null;
+  alive: boolean;
+  won: boolean;
+  outcome: string | null;
+  saves: number;
+  mafiaFound: number;
+  kills: number;
+};
+
+export type StoredMatch = {
+  id: string;
+  roomCode: string;
+  winner: string;
+  endedAt: string;
+  players: StoredMatchPlayer[];
 };
 
 export function usingDatabase() {
@@ -401,6 +425,9 @@ export async function deleteUserAccount(userId: string): Promise<void> {
   if (!usingDatabase()) {
     const store = readStore();
     store.users = store.users.filter((u) => u.id !== userId);
+    for (const m of store.matches ?? []) {
+      for (const p of m.players) if (p.userId === userId) { p.userId = null; p.name = "Deleted player"; }
+    }
     for (const [token, session] of Object.entries(store.sessions)) {
       if (session.userId === userId) delete store.sessions[token];
     }

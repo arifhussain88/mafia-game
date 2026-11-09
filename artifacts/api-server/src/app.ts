@@ -5,6 +5,7 @@ import fs from "node:fs";
 import pinoHttp from "pino-http";
 import adminRouter from "./routes/admin";
 import authRouter from "./routes/auth";
+import profileRouter from "./routes/profile";
 import healthRouter from "./routes/health";
 import { logger } from "./lib/logger";
 
@@ -54,6 +55,7 @@ app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 
 app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/profile", profileRouter);
 app.use("/api", healthRouter);
 
 app.use((err: any, req: any, res: any, next: any) => {
