@@ -1,6 +1,8 @@
 import { useState } from "react";
 import HowToPlay from "@/components/HowToPlay";
+import AuthCard from "@/components/auth/AuthCard";
 import { startAmbientLoop, stopAmbientLoop, unlockAudio } from "@/lib/audio";
+import { AuthError, clearSession, postAuth, saveSession, type AuthUser } from "@/lib/auth-api";
 import { requestAppExit, useBackHandler } from "@/lib/native-bridge";
 
 type Props = {
@@ -10,14 +12,13 @@ type Props = {
   onLogout?: () => void;
 };
 
-
 type View = "main" | "create" | "join";
 
 const inputCls =
-  "w-full min-h-[52px] px-4 rounded-xl bg-gray-900 border border-gray-700 text-white placeholder-gray-600 text-base focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/40 transition-colors";
+  "w-full min-h-[52px] px-4 rounded-xl bg-black/55 ring-1 ring-white/12 text-white placeholder-gray-600 text-base focus:outline-none focus:ring-2 focus:ring-amber-500/70 transition-shadow";
 
 const primaryBtn =
-  "w-full min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-lg font-semibold transition-colors";
+  "w-full min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-lg font-semibold transition-colors shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)]";
 
 const ghostBtn =
   "w-full min-h-[52px] rounded-xl bg-transparent border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 text-base transition-colors";
@@ -25,20 +26,23 @@ const ghostBtn =
 const secondaryBtn =
   "w-full min-h-[52px] rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-white text-lg font-semibold transition-colors";
 
+const ROLES = ["mafia", "detective", "doctor", "civilian"] as const;
+
+function readUser(): AuthUser | null {
+  try { return JSON.parse(localStorage.getItem("mafia-user") || "null"); } catch { return null; }
+}
+
+function readToken(): string | null {
+  try { return localStorage.getItem("mafia-token"); } catch { return null; }
+}
+
 export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogout }: Props) {
+  const [user, setUser] = useState<AuthUser | null>(readUser);
   const [view, setView] = useState<View>("main");
-  const [name, setName] = useState("");
+  // Default the per-room name to the account name; players can still change it.
+  const [name, setName] = useState(() => readUser()?.name ?? "");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [authMode, setAuthMode] = useState<"idle" | "signup" | "login">("idle");
-  const [authName, setAuthName] = useState("");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authDob, setAuthDob] = useState("");
-  const [authPass, setAuthPass] = useState("");
-  const [acceptTerms, setAcceptTerms] = useState(false);
-  const [user, setUser] = useState<{ id: string; name: string } | null>(() => {
-    try { return JSON.parse(localStorage.getItem("mafia-user") || "null"); } catch { return null; }
-  });
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePass, setDeletePass] = useState("");
@@ -49,10 +53,22 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
     setError("");
     if (howToPlayOpen) setHowToPlayOpen(false);
     else if (deleteOpen) { setDeleteOpen(false); setDeletePass(""); }
-    else if (authMode !== "idle") setAuthMode("idle");
     else if (view !== "main") { setView("main"); setCode(""); }
     else requestAppExit();
   });
+
+  function signedIn(next: AuthUser) {
+    setUser(next);
+    setName(next.name);
+    setError("");
+    onAuthenticated();
+  }
+
+  function goTo(next: View) {
+    setView(next);
+    setError("");
+    if (!name.trim() && user) setName(user.name);
+  }
 
   function handleCreate() {
     const trimmed = name.trim();
@@ -63,137 +79,41 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
   function handleJoin() {
     const trimmedName = name.trim();
     const trimmedCode = code.trim().toUpperCase();
-    if (!trimmedName) { setError("Enter your display name"); return; }
     if (trimmedCode.length !== 5) { setError("Room code must be 5 characters"); return; }
+    if (!trimmedName) { setError("Enter your display name"); return; }
     onJoinRoom(trimmedCode, trimmedName);
-  }
-
-  async function handleSignup() {
-    unlockAudio();
-    setError("");
-    if (!authName.trim() || !authPass || !authEmail.trim() || !authDob.trim()) { setError("Enter name, email, dob and password"); return; }
-    if (!acceptTerms) { setError("You must accept the terms to sign up"); return; }
-    // basic email check
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(authEmail)) { setError("Enter a valid email"); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(authDob)) { setError("Enter DOB as YYYY-MM-DD"); return; }
-    if (authPass.length < 8) { setError("Password must be at least 8 characters"); return; }
-    startAmbientLoop();
-    try {
-      const res = await fetch("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: authName.trim(), email: authEmail.trim(), password: authPass, dob: authDob.trim() }) });
-      if (!res.ok) {
-        let errMsg = "Signup failed";
-        try {
-          const body = await res.json();
-          errMsg = body?.message || JSON.stringify(body) || errMsg;
-        } catch {
-          try { const text = await res.text(); if (text) errMsg = text; } catch {}
-        }
-        throw new Error(errMsg);
-      }
-      let data: any = null;
-      try {
-        data = await res.json();
-      } catch {
-        const text = await res.text();
-        throw new Error(text || "Invalid server response");
-      }
-      localStorage.setItem("mafia-token", data.token);
-      localStorage.setItem("mafia-user", JSON.stringify(data.user));
-      setUser(data.user);
-      setAuthMode("idle");
-      onAuthenticated();
-    } catch (e: any) {
-      stopAmbientLoop();
-      setError(e?.message || String(e));
-    }
-  }
-
-  async function handleLogin() {
-    unlockAudio();
-    setError("");
-    if (!authEmail.trim() || !authPass) { setError("Enter email and password"); return; }
-    startAmbientLoop();
-    try {
-      const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: authEmail.trim(), password: authPass }) });
-      if (!res.ok) {
-        let errMsg = "Login failed";
-        try {
-          const body = await res.json();
-          errMsg = body?.message || JSON.stringify(body) || errMsg;
-        } catch {
-          try { const text = await res.text(); if (text) errMsg = text; } catch {}
-        }
-        throw new Error(errMsg);
-      }
-      let data: any = null;
-      try {
-        data = await res.json();
-      } catch {
-        const text = await res.text();
-        throw new Error(text || "Invalid server response");
-      }
-      localStorage.setItem("mafia-token", data.token);
-      localStorage.setItem("mafia-user", JSON.stringify(data.user));
-      setUser(data.user);
-      setAuthMode("idle");
-      onAuthenticated();
-    } catch (e: any) {
-      stopAmbientLoop();
-      setError(e?.message || String(e));
-    }
   }
 
   async function handleDeleteAccount() {
     setError("");
     if (!deletePass) { setError("Enter your password to confirm"); return; }
-    let token: string | null = null;
-    try { token = localStorage.getItem("mafia-token"); } catch { token = null; }
+    const token = readToken();
     if (!token) { setError("Please sign in again"); return; }
     setDeleteBusy(true);
     try {
-      const res = await fetch("/api/auth/delete-account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ password: deletePass }),
-      });
-      if (!res.ok) {
-        let msg = "Could not delete account";
-        try { msg = (await res.json())?.message || msg; } catch {}
-        throw new Error(msg);
-      }
-      try {
-        localStorage.removeItem("mafia-token");
-        localStorage.removeItem("mafia-user");
-      } catch {}
+      await postAuth("delete-account", { password: deletePass }, token);
+      clearSession();
       setDeleteOpen(false);
       setDeletePass("");
       setUser(null);
+      setName("");
       onLogout?.();
-    } catch (e: any) {
-      setError(e?.message || String(e));
+    } catch (e) {
+      setError((e as AuthError).message);
     } finally {
       setDeleteBusy(false);
     }
   }
 
   async function handleLogout() {
-    let token: string | null = null;
-    try { token = localStorage.getItem("mafia-token"); } catch { token = null; }
+    const token = readToken();
     if (token) {
-      try {
-        await fetch("/api/auth/logout", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } catch {
-        // ignore network errors on logout
-      }
+      try { await postAuth("logout", {}, token); } catch { /* ignore network errors on logout */ }
     }
-    try {
-      localStorage.removeItem("mafia-token");
-      localStorage.removeItem("mafia-user");
-    } catch {}
+    clearSession();
     setUser(null);
+    setName("");
+    setView("main");
     onLogout?.();
   }
 
@@ -203,99 +123,105 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
     setError("");
     startAmbientLoop();
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password: "testdev123" }),
-      });
-      if (!res.ok) {
-        let errMsg = "Login failed";
-        try {
-          const body = await res.json();
-          errMsg = body?.message || errMsg;
-        } catch {
-          try { const text = await res.text(); if (text) errMsg = text; } catch {}
-        }
-        throw new Error(errMsg);
-      }
-      const data = await res.json();
-      localStorage.setItem("mafia-token", data.token);
-      localStorage.setItem("mafia-user", JSON.stringify(data.user));
-      setUser(data.user);
-      setName(data.user.name);
-      setAuthMode("idle");
-      onAuthenticated();
-    } catch (e: any) {
+      const data = await postAuth<{ token: string; user: AuthUser }>("login", { email, password: "testdev123" });
+      saveSession(data.token, data.user);
+      signedIn(data.user);
+    } catch (e) {
       stopAmbientLoop();
-      setError(e?.message || String(e));
+      setError((e as AuthError).message);
     }
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
-        {view === "main" && authMode === "idle" && !deleteOpen && (
-          <div className="game-panel bg-black/45! ring-1 ring-white/10 shadow-xl shadow-black/40 px-5 py-6">
-            <div className="text-center mb-6">
+        {view === "main" && !deleteOpen && (
+          <div className="game-panel bg-black/50! ring-1 ring-white/10 shadow-2xl shadow-black/50 px-5 pt-6 pb-5">
+            <header className="text-center mb-5">
               <h1 className="font-display text-5xl font-bold tracking-tight mb-2 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
                 <span className="bg-gradient-to-b from-amber-200 to-amber-600 bg-clip-text text-transparent">
                   Mafia Wars
                 </span>
               </h1>
-              <p className="text-amber-200/70 text-xs uppercase tracking-[0.22em] mb-4">The Town has a problem</p>
+              <p className="text-amber-200/70 text-xs uppercase tracking-[0.22em]">The Town has a problem</p>
+            </header>
 
-              {user ? (
-                <div className="text-sm text-gray-300">
-                  Signed in as <strong className="text-white">{user.name}</strong>{" "}
-                  <button type="button" className="ml-3 text-xs underline cursor-pointer" onClick={handleLogout}>Log out</button>
-                </div>
-              ) : (
-                <div className="flex gap-2 justify-center mt-3">
-                  <button type="button" onClick={() => { setAuthMode("signup"); setError(""); }} className="px-3 py-2 bg-transparent border border-gray-700 rounded text-sm text-gray-200 cursor-pointer hover:border-amber-500/40 transition-colors">Sign up</button>
-                  <button type="button" onClick={() => { setAuthMode("login"); setError(""); }} className="px-3 py-2 bg-transparent border border-gray-700 rounded text-sm text-gray-200 cursor-pointer hover:border-amber-500/40 transition-colors">Log in</button>
-                </div>
-              )}
-            </div>
-            {import.meta.env.DEV && !user && (
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                {[
-                  ["Mafia", "mafia@test.local"],
-                  ["Doctor", "doctor@test.local"],
-                  ["Detective", "detective@test.local"],
-                  ["Civilian", "civilian@test.local"],
-                ].map(([label, email]) => (
+            {user ? (
+              <>
+                <div className="mb-5 flex items-center justify-between rounded-xl bg-black/40 px-4 py-3 ring-1 ring-white/10">
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Signed in</p>
+                    <p className="truncate font-semibold text-white">{user.name}</p>
+                  </div>
                   <button
-                    key={email}
                     type="button"
-                    onClick={() => handleTestLogin(email)}
-                    className="min-h-[40px] rounded-lg border border-amber-900/60 text-amber-200 text-sm cursor-pointer hover:bg-amber-950/40 transition-colors"
+                    className="shrink-0 rounded-lg px-3 py-2 text-sm text-gray-400 hover:text-white cursor-pointer"
+                    onClick={handleLogout}
                   >
-                    {label}
+                    Log out
                   </button>
-                ))}
-              </div>
-            )}
-            <div className="flex flex-col gap-3">
-              {user ? (
-                <>
-                  <button type="button" onClick={() => { setView("create"); setError(""); }} className={`${primaryBtn} cursor-pointer`}>
+                </div>
+                <div className="flex flex-col gap-3">
+                  <button type="button" onClick={() => goTo("create")} className={`${primaryBtn} cursor-pointer`}>
                     Create Room
                   </button>
-                  <button type="button" onClick={() => { setView("join"); setError(""); }} className={`${secondaryBtn} cursor-pointer`}>
+                  <button type="button" onClick={() => goTo("join")} className={`${secondaryBtn} cursor-pointer`}>
                     Join Room
                   </button>
-                </>
-              ) : (
-                <div className="text-sm text-gray-400 text-center">Please sign up or log in to create or join rooms.</div>
-              )}
-              <button
-                type="button"
-                onClick={() => setHowToPlayOpen(true)}
-                className={`${ghostBtn} cursor-pointer`}
-              >
-                How to play
-              </button>
-            </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-5 flex justify-center -space-x-3" aria-hidden>
+                  {ROLES.map((role, i) => (
+                    <img
+                      key={role}
+                      src={`/roles/${role}.webp`}
+                      alt=""
+                      loading="lazy"
+                      className="h-16 w-12 rounded-lg object-cover ring-2 ring-black/80 shadow-lg shadow-black/60"
+                      style={{ transform: `rotate(${(i - 1.5) * 7}deg) translateY(${Math.abs(i - 1.5) * 3}px)` }}
+                    />
+                  ))}
+                </div>
+                <AuthCard
+                  onAuthenticated={signedIn}
+                  onBeforeSubmit={() => { unlockAudio(); startAmbientLoop(); }}
+                  onFailed={stopAmbientLoop}
+                />
+                {import.meta.env.DEV && (
+                  <div className="mt-5 border-t border-white/10 pt-4">
+                    <p className="mb-2 text-center text-[11px] uppercase tracking-[0.18em] text-gray-500">Dev quick login</p>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[
+                        ["Mafia", "mafia@test.local"],
+                        ["Doctor", "doctor@test.local"],
+                        ["Detective", "detective@test.local"],
+                        ["Civilian", "civilian@test.local"],
+                      ].map(([label, email]) => (
+                        <button
+                          key={email}
+                          type="button"
+                          onClick={() => handleTestLogin(email)}
+                          className="min-h-[36px] rounded-lg border border-amber-900/60 text-amber-200 text-xs cursor-pointer hover:bg-amber-950/40 transition-colors"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {error && <p className="mt-2 text-center text-red-400 text-sm">{error}</p>}
+                  </div>
+                )}
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setHowToPlayOpen(true)}
+              className={`${ghostBtn} mt-3 cursor-pointer`}
+            >
+              How to play
+            </button>
           </div>
         )}
 
@@ -305,76 +231,33 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
             <p className="text-sm text-gray-400 mb-3">
               This permanently deletes your account, profile, stats and chat messages. It cannot be undone.
             </p>
-            <input
-              className={inputCls + " mb-2"}
-              placeholder="Confirm your password"
-              type="password"
-              autoComplete="current-password"
-              value={deletePass}
-              onChange={(e) => { setDeletePass(e.target.value); setError(""); }}
-            />
-            {error && <p className="text-red-400 text-sm">{error}</p>}
-            <div className="flex gap-2 mt-3">
-              <button
-                type="button"
-                disabled={deleteBusy}
-                className="w-full min-h-[52px] rounded-xl bg-red-700 hover:bg-red-600 disabled:opacity-60 text-white text-base font-semibold transition-colors cursor-pointer"
-                onClick={handleDeleteAccount}
-              >
-                {deleteBusy ? "Deleting…" : "Delete forever"}
-              </button>
-              <button
-                type="button"
-                className={`${ghostBtn} cursor-pointer`}
-                onClick={() => { setDeleteOpen(false); setDeletePass(""); setError(""); }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {authMode === "signup" && !user && (
-          <div className="game-panel px-5 py-6">
-            <h3 className="font-display text-xl font-semibold text-white mb-3">Sign up</h3>
-            <input className={inputCls + " mb-2"} placeholder="Display name" maxLength={24} value={authName} onChange={(e) => setAuthName(e.target.value)} />
-            <input className={inputCls + " mb-2"} placeholder="Email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
-            <label className="flex flex-col gap-1 mb-2">
-              <span className="text-sm font-medium text-gray-400">Date of birth</span>
+            <form onSubmit={(e) => { e.preventDefault(); void handleDeleteAccount(); }}>
               <input
-                className={`${inputCls} [color-scheme:dark]`}
-                type="date"
-                value={authDob}
-                onChange={(e) => setAuthDob(e.target.value)}
-                max={new Date().toISOString().slice(0, 10)}
+                className={inputCls + " mb-2"}
+                placeholder="Confirm your password"
+                type="password"
+                autoComplete="current-password"
+                value={deletePass}
+                onChange={(e) => { setDeletePass(e.target.value); setError(""); }}
               />
-            </label>
-            <input className={inputCls + " mb-2"} placeholder="Password (min 8 chars)" type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} />
-            <label className="flex items-start gap-2 text-sm text-gray-300 mb-2">
-              <input type="checkbox" className="mt-1 cursor-pointer" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
-              <span>
-                I accept the <a href="/terms.html" target="_blank" rel="noreferrer" className="underline" onClick={(e) => e.stopPropagation()}>Terms of Service</a>
-                {" "}and <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline" onClick={(e) => e.stopPropagation()}>Privacy Policy</a>
-              </span>
-            </label>
-            {error && <p className="text-red-400 text-sm">{error}</p>}
-            <div className="flex gap-2 mt-3">
-              <button type="button" className={`${primaryBtn} cursor-pointer`} onClick={handleSignup}>Create account</button>
-              <button type="button" className={`${ghostBtn} cursor-pointer`} onClick={() => setAuthMode("idle")}>Cancel</button>
-            </div>
-          </div>
-        )}
-
-        {authMode === "login" && !user && (
-          <div className="game-panel px-5 py-6">
-            <h3 className="font-display text-xl font-semibold text-white mb-3">Log in</h3>
-            <input className={inputCls + " mb-2"} placeholder="Email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
-            <input className={inputCls + " mb-2"} placeholder="Password" type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} />
-            {error && <p className="text-red-400 text-sm">{error}</p>}
-            <div className="flex gap-2 mt-3">
-              <button type="button" className={`${primaryBtn} cursor-pointer`} onClick={handleLogin}>Log in</button>
-              <button type="button" className={`${ghostBtn} cursor-pointer`} onClick={() => setAuthMode("idle")}>Cancel</button>
-            </div>
+              {error && <p className="text-red-400 text-sm">{error}</p>}
+              <div className="flex gap-2 mt-3">
+                <button
+                  type="submit"
+                  disabled={deleteBusy}
+                  className="w-full min-h-[52px] rounded-xl bg-red-700 hover:bg-red-600 disabled:opacity-60 text-white text-base font-semibold transition-colors cursor-pointer"
+                >
+                  {deleteBusy ? "Deleting…" : "Delete forever"}
+                </button>
+                <button
+                  type="button"
+                  className={`${ghostBtn} cursor-pointer`}
+                  onClick={() => { setDeleteOpen(false); setDeletePass(""); setError(""); }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         )}
 
@@ -384,7 +267,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
               <h2 className="font-display text-2xl font-bold text-white mb-1">Create a room</h2>
               <p className="text-gray-500 text-sm">You'll be the host.</p>
             </div>
-            <div className="flex flex-col gap-4">
+            <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>
               <label className="flex flex-col gap-2">
                 <span className="text-sm font-medium text-gray-400">Your display name</span>
                 <input
@@ -392,16 +275,16 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                   type="text"
                   value={name}
                   onChange={(e) => { setName(e.target.value); setError(""); }}
-                  onKeyDown={(e) => e.key === "Enter" && handleCreate()}
                   placeholder="e.g. Ghost"
                   maxLength={24}
+                  autoComplete="nickname"
                   className={inputCls}
                 />
               </label>
               {error && <p className="text-red-400 text-sm">{error}</p>}
-              <button type="button" onClick={handleCreate} className={`${primaryBtn} cursor-pointer`}>Create Room</button>
-              <button type="button" onClick={() => { setView("main"); setError(""); setName(""); }} className={`${ghostBtn} cursor-pointer`}>Back</button>
-            </div>
+              <button type="submit" className={`${primaryBtn} cursor-pointer`}>Create Room</button>
+              <button type="button" onClick={() => goTo("main")} className={`${ghostBtn} cursor-pointer`}>Back</button>
+            </form>
           </div>
         )}
 
@@ -411,7 +294,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
               <h2 className="font-display text-2xl font-bold text-white mb-1">Join a room</h2>
               <p className="text-gray-500 text-sm">Enter the 5-letter code from the host.</p>
             </div>
-            <div className="flex flex-col gap-4">
+            <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); handleJoin(); }}>
               <label className="flex flex-col gap-2">
                 <span className="text-sm font-medium text-gray-400">Room code</span>
                 <input
@@ -421,6 +304,9 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                   onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(""); }}
                   placeholder="e.g. AB3X7"
                   maxLength={5}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  spellCheck={false}
                   className={`${inputCls} tracking-widest uppercase text-center text-xl font-bold`}
                 />
               </label>
@@ -430,18 +316,19 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                   type="text"
                   value={name}
                   onChange={(e) => { setName(e.target.value); setError(""); }}
-                  onKeyDown={(e) => e.key === "Enter" && handleJoin()}
                   placeholder="e.g. Ghost"
                   maxLength={24}
+                  autoComplete="nickname"
                   className={inputCls}
                 />
               </label>
               {error && <p className="text-red-400 text-sm">{error}</p>}
-              <button type="button" onClick={handleJoin} className={`${primaryBtn} cursor-pointer`}>Join Room</button>
-              <button type="button" onClick={() => { setView("main"); setError(""); setName(""); setCode(""); }} className={`${ghostBtn} cursor-pointer`}>Back</button>
-            </div>
+              <button type="submit" className={`${primaryBtn} cursor-pointer`}>Join Room</button>
+              <button type="button" onClick={() => { goTo("main"); setCode(""); }} className={`${ghostBtn} cursor-pointer`}>Back</button>
+            </form>
           </div>
         )}
+
         <p className="text-center text-xs text-gray-500 mt-8">
           <a href="/privacy.html" target="_blank" rel="noreferrer" className="underline">Privacy Policy</a>
           {" · "}
@@ -452,7 +339,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
               <button
                 type="button"
                 className="underline cursor-pointer"
-                onClick={() => { setDeleteOpen(true); setAuthMode("idle"); setError(""); }}
+                onClick={() => { setDeleteOpen(true); setError(""); }}
               >
                 Delete account
               </button>
