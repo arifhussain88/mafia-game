@@ -2,7 +2,7 @@
 
 Internal names stay `mafia-wars` (systemd unit, `/opt/mafia-wars`, release tarball, Neon project) so existing servers keep working.
 
-**Live URL:** http://141.148.204.30/  
+**Live URL:** https://mafiatown.duckdns.org/ (VM IP 141.148.204.30; plain-HTTP requests redirect to HTTPS)  
 **Production branch:** `main`, deployed automatically by GitHub Actions on every push or merged PR (see "GitHub Actions" below)  
 **Runtime on the VM:** Node.js 22 + systemd (`mafia-wars`) + Caddy on `:80` → `127.0.0.1:8080`  
 **Not used:** Docker. Node runs directly under systemd; keep it that way on the Always Free micro.

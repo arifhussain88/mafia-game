@@ -29,8 +29,8 @@ Where the MVP stands for its first Play release. The Android app is the Expo pro
 
 ## Play Console
 
-- Privacy policy URL: `https://<game-host>/privacy.html`
-- Account deletion URL: `https://<game-host>/delete-account.html`
+- Privacy policy URL: `https://mafiatown.duckdns.org/privacy.html`
+- Account deletion URL: `https://mafiatown.duckdns.org/delete-account.html`
 - Data safety form:
   - Collected: email, display name, date of birth, in-game chat, and match history.
   - Encrypted in transit: yes, once on HTTPS.
