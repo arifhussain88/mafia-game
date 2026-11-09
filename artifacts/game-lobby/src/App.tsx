@@ -17,6 +17,7 @@ import LeaveMatchButton from "@/components/LeaveMatchButton";
 import MatchTicker from "@/components/MatchTicker";
 import RoomChat, { type ChatMode, type ChatMessage } from "@/components/RoomChat";
 import { useBackHandler } from "@/lib/native-bridge";
+import { clearInviteCode } from "@/lib/invite";
 import { playNightSting, playDayChime, playTargetLocked, preloadGunshot, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
@@ -363,6 +364,7 @@ export default function App() {
 
     socket.on("room-joined", (data: { code: string; players: Player[]; isHost: boolean; timerSettings?: TimerSettings }) => {
       saveRoom(data.code);
+      clearInviteCode();
       setRoomCode(data.code);
       setPlayers(data.players);
       setIsHost(data.isHost);

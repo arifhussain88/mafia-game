@@ -5,6 +5,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -92,8 +93,12 @@ export default function App() {
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     try {
-      const msg = JSON.parse(event.nativeEvent.data) as { type?: string };
+      const msg = JSON.parse(event.nativeEvent.data) as { type?: string; message?: string };
       if (msg.type === 'exit') BackHandler.exitApp();
+      // Invite friends: the system share sheet (WhatsApp, SMS, etc.). Nothing is sent unless the player picks an app.
+      if (msg.type === 'share' && typeof msg.message === 'string') {
+        void Share.share({ message: msg.message.slice(0, 500) }).catch(() => {});
+      }
     } catch {
       // Not ours; ignore.
     }

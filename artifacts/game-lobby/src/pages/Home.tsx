@@ -4,6 +4,7 @@ import AuthCard from "@/components/auth/AuthCard";
 import { startAmbientLoop, stopAmbientLoop, unlockAudio } from "@/lib/audio";
 import { AuthError, clearSession, postAuth, saveSession, type AuthUser } from "@/lib/auth-api";
 import { requestAppExit, useBackHandler } from "@/lib/native-bridge";
+import { takeInviteCode } from "@/lib/invite";
 
 type Props = {
   onCreateRoom: (name: string) => void;
@@ -38,10 +39,12 @@ function readToken(): string | null {
 
 export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogout }: Props) {
   const [user, setUser] = useState<AuthUser | null>(readUser);
-  const [view, setView] = useState<View>("main");
+  // Opened from an invite link (/join/ABCDE): go straight to Join with the code filled in.
+  const [inviteCode] = useState(takeInviteCode);
+  const [view, setView] = useState<View>(() => (readUser() && inviteCode ? "join" : "main"));
   // Default the per-room name to the account name; players can still change it.
   const [name, setName] = useState(() => readUser()?.name ?? "");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(inviteCode ?? "");
   const [error, setError] = useState("");
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -61,6 +64,10 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
     setUser(next);
     setName(next.name);
     setError("");
+    if (inviteCode) {
+      setCode(inviteCode);
+      setView("join");
+    }
     onAuthenticated();
   }
 
@@ -184,6 +191,11 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                     />
                   ))}
                 </div>
+                {inviteCode && (
+                  <p className="mb-4 rounded-xl bg-amber-950/40 px-4 py-3 text-center text-sm text-amber-100 ring-1 ring-amber-700/40">
+                    You're invited to room <span className="font-mono font-bold tracking-widest">{inviteCode}</span>. Sign in or create an account to join.
+                  </p>
+                )}
                 <AuthCard
                   onAuthenticated={signedIn}
                   onBeforeSubmit={() => { unlockAudio(); startAmbientLoop(); }}

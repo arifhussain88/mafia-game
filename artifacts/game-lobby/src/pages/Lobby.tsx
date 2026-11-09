@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check, Copy, Flag } from "lucide-react";
+import { Check, Copy, Flag, Share2 } from "lucide-react";
+import { shareInvite } from "@/lib/invite";
 import type { Player } from "@/App";
 import HowToPlay from "@/components/HowToPlay";
 import ReportPlayerDialog from "@/components/ReportPlayerDialog";
@@ -132,6 +133,7 @@ export default function Lobby({
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [reportTarget, setReportTarget] = useState<Player | null>(null);
+  const [inviteNote, setInviteNote] = useState<string | null>(null);
   const [kickConfirm, setKickConfirm] = useState<string | null>(null);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
 
@@ -142,6 +144,16 @@ export default function Lobby({
     if (!ok) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleInvite() {
+    const code = sanitizeRoomCode(roomCode);
+    if (!code) return;
+    const result = await shareInvite(code);
+    if (result === "copied") {
+      setInviteNote("Invite link copied");
+      setTimeout(() => setInviteNote(null), 2500);
+    }
   }
 
   function handleKick(targetId: string) {
@@ -183,7 +195,15 @@ export default function Lobby({
               <Copy className="h-5 w-5 text-gray-500 group-hover:text-amber-400 transition-colors shrink-0" aria-hidden />
             )}
           </button>
-          <p className="text-gray-500 text-xs mt-2">Share this code — tap to copy</p>
+          <p className="text-gray-500 text-xs mt-2">Tap to copy the code</p>
+          <button
+            type="button"
+            onClick={() => void handleInvite()}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-base font-semibold transition-colors cursor-pointer shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)]"
+          >
+            <Share2 className="h-5 w-5" aria-hidden />
+            {inviteNote ?? "Invite friends"}
+          </button>
         </div>
 
         <div className="mb-6">
@@ -281,8 +301,8 @@ export default function Lobby({
               {canStart ? "Start Game" : "Waiting for players…"}
             </button>
             {!canStart && needed > 0 && (
-              <p className="text-center text-sm text-gray-600">
-                Need {needed} more player{needed !== 1 ? "s" : ""} to start (min {MIN_PLAYERS})
+              <p className="text-center text-sm text-gray-500">
+                Invite {needed} more friend{needed !== 1 ? "s" : ""} to start. A game needs at least {MIN_PLAYERS} players.
               </p>
             )}
           </div>
