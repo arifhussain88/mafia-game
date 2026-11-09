@@ -159,46 +159,137 @@ export function playChatPing(): void {
   });
 }
 
-/** Classic mechanical keyboard click — short snap + tiny impact. */
-export function playTypewriterTick(): void {
+export type KeyStroke = {
+  /** Seconds after the typing starts. */
+  at: number;
+  kind: "key" | "space" | "enter";
+};
+
+let noiseBuffer: AudioBuffer | null = null;
+function getNoise(ctx: AudioContext): AudioBuffer {
+  if (noiseBuffer && noiseBuffer.sampleRate === ctx.sampleRate) return noiseBuffer;
+  const len = Math.floor(ctx.sampleRate * 0.25);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  noiseBuffer = buf;
+  return buf;
+}
+
+/** Short filtered noise burst: the "tick" of a switch or the keycap hitting the plate. */
+function noiseBurst(
+  ctx: AudioContext,
+  out: AudioNode,
+  t: number,
+  opts: { freq: number; q: number; peak: number; decay: number },
+  nodes: AudioScheduledSourceNode[],
+) {
+  const src = ctx.createBufferSource();
+  src.buffer = getNoise(ctx);
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.setValueAtTime(opts.freq, t);
+  bp.Q.setValueAtTime(opts.q, t);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t);
+  env.gain.exponentialRampToValueAtTime(opts.peak, t + 0.0012);
+  env.gain.exponentialRampToValueAtTime(0.0001, t + opts.decay);
+  src.connect(bp);
+  bp.connect(env);
+  env.connect(out);
+  // Random offset into the shared buffer so no two clicks are identical.
+  src.start(t, Math.random() * 0.2, opts.decay + 0.01);
+  nodes.push(src);
+}
+
+/** Low, fast-decaying body resonance: the "thock" when the key bottoms out. */
+function thock(
+  ctx: AudioContext,
+  out: AudioNode,
+  t: number,
+  opts: { freq: number; peak: number; decay: number },
+  nodes: AudioScheduledSourceNode[],
+) {
+  const osc = ctx.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(opts.freq, t);
+  osc.frequency.exponentialRampToValueAtTime(opts.freq * 0.6, t + opts.decay);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t);
+  env.gain.exponentialRampToValueAtTime(opts.peak, t + 0.002);
+  env.gain.exponentialRampToValueAtTime(0.0001, t + opts.decay);
+  osc.connect(env);
+  env.connect(out);
+  osc.start(t);
+  osc.stop(t + opts.decay + 0.01);
+  nodes.push(osc);
+}
+
+/** One mechanical key press: switch click + keycap thock + a softer release click. */
+function keyPress(ctx: AudioContext, out: AudioNode, t: number, kind: KeyStroke["kind"], nodes: AudioScheduledSourceNode[]) {
+  const vel = 0.8 + Math.random() * 0.35; // human-ish variation in how hard each key is hit
+  if (kind === "key") {
+    noiseBurst(ctx, out, t, { freq: 3400 + Math.random() * 1600, q: 1.4, peak: 0.55 * vel, decay: 0.018 }, nodes);
+    thock(ctx, out, t + 0.003, { freq: 230 + Math.random() * 70, peak: 0.32 * vel, decay: 0.04 }, nodes);
+    noiseBurst(ctx, out, t + 0.03 + Math.random() * 0.012, { freq: 5200, q: 2, peak: 0.12 * vel, decay: 0.01 }, nodes);
+  } else if (kind === "space") {
+    // Space bar: longer stabiliser rattle, deeper body.
+    noiseBurst(ctx, out, t, { freq: 1900 + Math.random() * 400, q: 0.9, peak: 0.45 * vel, decay: 0.03 }, nodes);
+    thock(ctx, out, t + 0.004, { freq: 140 + Math.random() * 25, peak: 0.42 * vel, decay: 0.07 }, nodes);
+    noiseBurst(ctx, out, t + 0.045, { freq: 3000, q: 1.2, peak: 0.14 * vel, decay: 0.015 }, nodes);
+  } else {
+    // Enter: the heavy, satisfying one at the end of a line.
+    noiseBurst(ctx, out, t, { freq: 2600, q: 1.1, peak: 0.7, decay: 0.028 }, nodes);
+    thock(ctx, out, t + 0.004, { freq: 170, peak: 0.55, decay: 0.08 }, nodes);
+    noiseBurst(ctx, out, t + 0.07, { freq: 4200, q: 1.6, peak: 0.18, decay: 0.014 }, nodes);
+  }
+}
+
+/**
+ * Schedule a run of key presses on the Web Audio clock (sample-accurate, no
+ * timer drift, keeps going in background tabs). `startedAt` is the
+ * performance.now() moment the visual typing started, so audio that had to
+ * wait for the context to resume skips ahead instead of lagging the text.
+ * Returns a cancel function. Synthesized in-browser; no audio asset.
+ */
+export function scheduleKeyStrokes(strokes: KeyStroke[], startedAt: number): () => void {
+  const nodes: AudioScheduledSourceNode[] = [];
+  let master: GainNode | null = null;
+  let cancelled = false;
+
   withAudio((ctx, now, level) => {
-    const pitch = 2400 + Math.random() * 1600;
-
-    const click = ctx.createOscillator();
-    const clickEnv = ctx.createGain();
-    click.type = "square";
-    click.frequency.setValueAtTime(pitch, now);
-    click.frequency.exponentialRampToValueAtTime(pitch * 0.55, now + 0.012);
-    clickEnv.gain.setValueAtTime(0.0001, now);
-    clickEnv.gain.exponentialRampToValueAtTime(0.11 * level, now + 0.001);
-    clickEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.014);
-    click.connect(clickEnv);
-    clickEnv.connect(ctx.destination);
-    click.start(now);
-    click.stop(now + 0.016);
-
-    const noiseLen = Math.max(1, Math.floor(ctx.sampleRate * 0.01));
-    const buffer = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < noiseLen; i++) {
-      const t = i / noiseLen;
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 3);
+    if (cancelled) return;
+    const lag = (performance.now() - startedAt) / 1000;
+    master = ctx.createGain();
+    master.gain.setValueAtTime(0.5 * level, now);
+    // Gentle limiter: overlapping fast keystrokes never clip.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.setValueAtTime(-14, now);
+    limiter.ratio.setValueAtTime(6, now);
+    master.connect(limiter);
+    limiter.connect(ctx.destination);
+    for (const s of strokes) {
+      const at = s.at - lag;
+      if (at < -0.005) continue; // already shown on screen; don't play late
+      keyPress(ctx, master, now + Math.max(0, at), s.kind, nodes);
     }
-    const noise = ctx.createBufferSource();
-    noise.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = "highpass";
-    filter.frequency.setValueAtTime(1800 + Math.random() * 600, now);
-    const noiseEnv = ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.0001, now);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.09 * level, now + 0.0015);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.012);
-    noise.connect(filter);
-    filter.connect(noiseEnv);
-    noiseEnv.connect(ctx.destination);
-    noise.start(now);
-    noise.stop(now + 0.014);
   });
+
+  const onMute = (e: Event) => {
+    if ((e as CustomEvent<boolean>).detail) cancel();
+  };
+  window.addEventListener("mafia-muted-changed", onMute);
+
+  function cancel() {
+    cancelled = true;
+    window.removeEventListener("mafia-muted-changed", onMute);
+    for (const n of nodes) {
+      try { n.stop(); } catch { /* already stopped */ }
+    }
+    nodes.length = 0;
+    try { master?.disconnect(); } catch { /* ignore */ }
+  }
+  return cancel;
 }
 
 /** Clear gunshot: bright crack + body thump. Synthesized. No sample file. */

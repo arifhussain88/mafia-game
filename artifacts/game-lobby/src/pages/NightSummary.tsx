@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { playTypewriterTick } from "@/lib/audio";
+import { useEffect, useMemo, useState } from "react";
+import { scheduleKeyStrokes, type KeyStroke } from "@/lib/audio";
 
 type Props = {
   lines: string[];
@@ -10,75 +10,81 @@ const CHAR_DELAY_MS = 42;
 const LINE_PAUSE_MS = 1000;
 const START_DELAY_MS = 280;
 
+type LineTiming = { start: number; end: number };
+
+/**
+ * One timeline drives both the text and the key sounds. Character k of a line
+ * appears at line.start + k * CHAR_DELAY_MS, the line completes ("Enter") one
+ * beat after its last character, then LINE_PAUSE_MS before the next line.
+ * This mirrors computeTypewriterDuration on the server.
+ */
+function buildTimeline(lines: string[]) {
+  const timings: LineTiming[] = [];
+  const strokes: KeyStroke[] = [];
+  let t = START_DELAY_MS;
+  for (const line of lines) {
+    const start = t;
+    for (let k = 0; k < line.length; k++) {
+      strokes.push({ at: (start + k * CHAR_DELAY_MS) / 1000, kind: /\s/.test(line[k]) ? "space" : "key" });
+    }
+    const end = start + line.length * CHAR_DELAY_MS;
+    strokes.push({ at: end / 1000, kind: "enter" });
+    timings.push({ start, end });
+    t = end + LINE_PAUSE_MS;
+  }
+  return { timings, strokes, total: t };
+}
+
 export default function NightSummary({ lines }: Props) {
-  const [completedLines, setCompletedLines] = useState<string[]>([]);
-  const [currentLineIndex, setCurrentLineIndex] = useState(0);
-  const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [allDone, setAllDone] = useState(false);
+  const timeline = useMemo(() => buildTimeline(lines), [lines]);
+  const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    setCompletedLines([]);
-    setCurrentLineIndex(0);
-    setCurrentCharIndex(0);
-    setAllDone(false);
-
+    setElapsed(0);
     if (lines.length === 0) return;
 
-    let cancelled = false;
-    let lineIdx = 0;
-    let charIdx = 0;
-    const done: string[] = [];
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    const startedAt = performance.now();
+    const cancelSound = scheduleKeyStrokes(timeline.strokes, startedAt);
+    let raf = 0;
 
-    function schedule(ms: number, fn: () => void) {
-      timer = setTimeout(() => {
-        if (!cancelled) fn();
-      }, ms);
-    }
+    // Reveal from elapsed wall time (not a chain of timers), so the text can
+    // never drift from the audio clock and catches up after a background tab.
+    // A tiny component, so re-rendering each frame for ~10s is cheap.
+    const tick = () => {
+      const now = performance.now() - startedAt;
+      setElapsed(now);
+      if (now < timeline.total) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
 
-    function step() {
-      if (cancelled) return;
-
-      if (lineIdx >= lines.length) {
-        setAllDone(true);
-        return;
-      }
-
-      const line = lines[lineIdx];
-
-      if (charIdx < line.length) {
-        const next = charIdx + 1;
-        const ch = line[charIdx];
-        charIdx = next;
-        setCurrentLineIndex(lineIdx);
-        setCurrentCharIndex(next);
-        // Click only for visible glyphs so silence matches blank gaps
-        if (ch && !/\s/.test(ch)) playTypewriterTick();
-        schedule(CHAR_DELAY_MS, step);
-        return;
-      }
-
-      done.push(line);
-      setCompletedLines([...done]);
-      lineIdx += 1;
-      charIdx = 0;
-      setCurrentLineIndex(lineIdx);
-      setCurrentCharIndex(0);
-      schedule(LINE_PAUSE_MS, step);
-    }
-
-    schedule(START_DELAY_MS, step);
+    // rAF pauses in background tabs; a slow interval keeps state honest there.
+    const fallback = window.setInterval(() => setElapsed(performance.now() - startedAt), 500);
 
     return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
+      cancelAnimationFrame(raf);
+      window.clearInterval(fallback);
+      cancelSound();
     };
-  }, [lines]);
+  }, [lines, timeline]);
 
-  const activePartial =
-    currentLineIndex < lines.length
-      ? lines[currentLineIndex].slice(0, currentCharIndex)
-      : null;
+  const completedLines: string[] = [];
+  let activePartial: string | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const { start, end } = timeline.timings[i];
+    if (elapsed >= end) {
+      completedLines.push(lines[i]);
+      continue;
+    }
+    if (elapsed >= start) {
+      // +1: the character scheduled exactly at `start` is visible at `start`.
+      const chars = Math.min(lines[i].length, Math.floor((elapsed - start) / CHAR_DELAY_MS) + 1);
+      activePartial = lines[i].slice(0, chars);
+    }
+    break;
+  }
+  const allDone = lines.length > 0 && elapsed >= timeline.total;
+  // Between lines (the pause) keep a blinking caret on an empty new line.
+  const betweenLines = !allDone && activePartial === null && completedLines.length < lines.length;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
@@ -95,7 +101,7 @@ export default function NightSummary({ lines }: Props) {
           style={{ background: "linear-gradient(to right, transparent, rgba(212,175,95,0.35), transparent)" }}
         />
 
-        <div className="flex flex-col gap-6 min-h-[120px] md:min-h-[160px]">
+        <div className="flex flex-col gap-6 min-h-[120px] md:min-h-[160px]" aria-live="polite">
           {completedLines.map((line, i) => (
             <p
               key={i}
@@ -106,7 +112,7 @@ export default function NightSummary({ lines }: Props) {
             </p>
           ))}
 
-          {activePartial !== null && (
+          {(activePartial !== null || betweenLines) && (
             <p
               className="font-display text-amber-50/95 text-[1.05rem] md:text-xl leading-snug tracking-wide"
               style={{ textShadow: "0 0 24px rgba(212,175,95,0.22), 0 2px 14px rgba(0,0,0,0.5)" }}
