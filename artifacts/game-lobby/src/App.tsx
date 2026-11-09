@@ -296,14 +296,31 @@ export default function App() {
       if (code) socket.emit("rejoin-room", { code });
     });
 
+    const signOutLocally = () => {
+      try {
+        localStorage.removeItem("mafia-token");
+        localStorage.removeItem("mafia-user");
+      } catch {}
+      forgetRoom();
+      setIsAuthenticated(false);
+      setPhase("home");
+    };
+    const SUSPENDED = "This account is suspended for breaking the community rules. To appeal, email sayedarif.dev@proton.me.";
+
+    socket.on("account-suspended", (data: { message?: string }) => {
+      signOutLocally();
+      toast({ title: "Account suspended", description: data?.message ?? SUSPENDED, variant: "destructive" });
+    });
+
     socket.on("connect_error", (err) => {
+      if (/suspended/i.test(err.message)) {
+        signOutLocally();
+        socket.disconnect();
+        toast({ title: "Account suspended", description: SUSPENDED, variant: "destructive" });
+        return;
+      }
       if (err.message === "Unauthorized" || /unauthorized/i.test(err.message)) {
-        try {
-          localStorage.removeItem("mafia-token");
-          localStorage.removeItem("mafia-user");
-        } catch {}
-        setIsAuthenticated(false);
-        setPhase("home");
+        signOutLocally();
         toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
         return;
       }
@@ -520,6 +537,10 @@ export default function App() {
 
   const startGame           = useCallback(() => { socketRef.current?.emit("start-game"); }, []);
   const kickPlayer          = useCallback((id: string) => { socketRef.current?.emit("kick-player", { targetId: id }); }, []);
+  const reportPlayer        = useCallback((id: string, reason: string) => {
+    socketRef.current?.emit("report-player", { targetId: id, reason });
+    toast({ title: "Report sent", description: "Thanks. We review every report." });
+  }, [toast]);
   const updateTimerSettings = useCallback((next: TimerSettings) => {
     setTimerSettings(next);
     socketRef.current?.emit("set-timer-settings", next);
@@ -568,6 +589,8 @@ export default function App() {
       <Atmosphere phase={phase} />
       {phase === "home" && (
         <Home
+          // Remount on sign-in/out so Home re-reads the stored user (e.g. after a suspension).
+          key={isAuthenticated ? "signed-in" : "signed-out"}
           onCreateRoom={createRoom}
           onJoinRoom={joinRoom}
           onAuthenticated={() => {
@@ -591,6 +614,7 @@ export default function App() {
           timerSettings={timerSettings}
           onStartGame={startGame}
           onKickPlayer={kickPlayer}
+          onReportPlayer={reportPlayer}
           onTimerSettingsChange={updateTimerSettings}
         />
       )}

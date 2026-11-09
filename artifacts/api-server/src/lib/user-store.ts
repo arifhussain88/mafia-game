@@ -44,11 +44,29 @@ export type StoredUser = {
   dob?: string;
   passwordHash: string;
   createdAt: string;
+  /** ISO time the account was suspended; absent when in good standing. */
+  bannedAt?: string;
+  banReason?: string;
+};
+
+export type StoredReport = {
+  id: string;
+  reporterId: string | null;
+  reporterName: string;
+  reportedId: string | null;
+  reportedName: string;
+  roomCode: string;
+  reason: string;
+  message: string | null;
+  status: string;
+  createdAt: string;
 };
 
 export type UserStore = {
   users: StoredUser[];
   sessions: Record<string, { userId: string; createdAt: string }>;
+  /** JSON-mode (local dev / tests) copy of the reports table. */
+  reports?: StoredReport[];
 };
 
 export function usingDatabase() {
@@ -115,6 +133,8 @@ function rowToStoredUser(row: User): StoredUser {
     dob: row.dob ?? undefined,
     passwordHash: row.passwordHash,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+    bannedAt: row.bannedAt ? new Date(row.bannedAt).toISOString() : undefined,
+    banReason: row.banReason ?? undefined,
   };
 }
 

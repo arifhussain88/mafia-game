@@ -36,6 +36,33 @@ export function getDb(): Db {
   return dbInstance;
 }
 
+/**
+ * Idempotent schema upgrades, run once at server start. The deploy never runs
+ * drizzle-kit, so every column/table added after the first push is created
+ * here with IF NOT EXISTS; safe to run on every boot.
+ */
+export async function ensureSchema(): Promise<void> {
+  if (!hasDatabaseUrl()) return;
+  const p = getPool();
+  await p.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_at timestamptz;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason text;
+    CREATE TABLE IF NOT EXISTS reports (
+      id text PRIMARY KEY,
+      reporter_id text,
+      reporter_name text NOT NULL,
+      reported_id text,
+      reported_name text NOT NULL,
+      room_code text NOT NULL,
+      reason text NOT NULL,
+      message text,
+      status text NOT NULL DEFAULT 'open',
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS reports_created_at_idx ON reports (created_at);
+  `);
+}
+
 export function getPool(): pg.Pool {
   getDb();
   if (!pool) throw new Error("DATABASE_URL must be set to use the database");

@@ -17,6 +17,7 @@ import {
   verifyPassword,
 } from "../lib/user-store";
 import { forgetUser } from "../socket-handlers";
+import { containsProfanity } from "../lib/profanity";
 
 const router = Router();
 
@@ -67,6 +68,9 @@ function recordFail(ip: string, email?: string) {
   bump(`fail-ip:${ip}`);
   if (email) bump(`fail-email:${email}`);
 }
+
+export const SUSPENDED_MESSAGE =
+  "This account is suspended for breaking the community rules. To appeal, email sayedarif.dev@proton.me.";
 
 const TOO_MANY = { message: "Too many attempts. Try again in a few minutes." };
 
@@ -122,6 +126,7 @@ router.post("/signup", async (req, res) => {
   if (!name || !email || !password || !dob) return res.status(400).json({ message: "name, email, password and dob required" });
   const trimmedName = String(name).trim().replace(/\s+/g, " ");
   if (trimmedName.length < 1 || trimmedName.length > 24) return res.status(400).json({ message: "Display name must be 1 to 24 characters" });
+  if (containsProfanity(trimmedName)) return res.status(400).json({ message: "Please choose a different display name" });
   const emailStr = String(email).trim();
   if (emailStr.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) return res.status(400).json({ message: "Invalid email" });
   if (String(password).length > 128) return res.status(400).json({ message: "Password is too long" });
@@ -178,6 +183,9 @@ router.post("/login", async (req, res) => {
     if (!user || !ok) {
       recordFail(ip, normalizedEmail);
       return res.status(401).json({ message: "Invalid credentials" });
+    }
+    if (user.bannedAt) {
+      return res.status(403).json({ message: SUSPENDED_MESSAGE });
     }
 
     if (/^[a-f0-9]{64}$/i.test(user.passwordHash)) {

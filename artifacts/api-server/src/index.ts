@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { Server as SocketIOServer } from "socket.io";
-import { hasDatabaseUrl } from "@workspace/db";
+import { ensureSchema, hasDatabaseUrl } from "@workspace/db";
+import { purgeOldReports } from "./lib/moderation";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { registerSocketHandlers } from "./socket-handlers";
@@ -51,6 +52,16 @@ httpServer.on("error", (err) => {
   logger.fatal({ err, port, host }, "HTTP server failed to start");
   process.exit(1);
 });
+
+// Bring the database up to date (new tables/columns) before serving, then
+// keep report retention to the 12 months promised in the privacy policy.
+try {
+  await ensureSchema();
+} catch (err) {
+  logger.error({ err }, "Schema upgrade failed; continuing (features needing it will error)");
+}
+void purgeOldReports();
+setInterval(() => void purgeOldReports(), 24 * 60 * 60 * 1000).unref();
 
 httpServer.listen(port, host, () => {
   const authStore = hasDatabaseUrl() ? "neon" : "json";

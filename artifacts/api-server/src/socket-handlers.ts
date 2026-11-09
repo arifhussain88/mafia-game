@@ -2,6 +2,8 @@ import { Server, Socket } from "socket.io";
 import { persistChatMessage, persistMatchEnd } from "./lib/game-persist";
 import { logger } from "./lib/logger";
 import { DbUnavailableError, getUserForToken } from "./lib/user-store";
+import { normaliseReason, saveReport } from "./lib/moderation";
+import { containsProfanity, maskProfanity } from "./lib/profanity";
 
 
 const TIMERS = {
@@ -167,7 +169,8 @@ interface Room {
   timerEndsAt: number;
   pendingNarration: string;
   chatMessages: ChatMessage[];
-  chatReports: ChatMessage[];
+  /** Author account per chat message id. Kept server-side only, for reports. */
+  chatAuthors: Map<string, string | undefined>;
   chatSeq: number;
   lastChatAt: Map<string, number>;
   emptySince?: number;
@@ -302,6 +305,7 @@ function assignRoles(room: Room) {
 
 function clearDayChat(room: Room) {
   room.chatMessages = [];
+  room.chatAuthors = new Map();
   room.lastChatAt = new Map();
 }
 
@@ -971,6 +975,16 @@ function removeLobbySeat(io: Server, code: string, room: Room, seat: Player) {
  * Account deleted: forget the account on any live seat so match/chat saves
  * don't reference a removed user, and drop its sockets.
  */
+/** Cut every live connection of an account (e.g. after a ban), with a reason shown to the player. */
+export function disconnectUser(userId: string, message: string) {
+  if (!ioRef) return;
+  for (const s of ioRef.sockets.sockets.values()) {
+    if (s.data.userId !== userId) continue;
+    s.emit("account-suspended", { message });
+    s.disconnect(true);
+  }
+}
+
 export function forgetUser(userId: string) {
   for (const room of rooms.values()) {
     for (const p of room.players.values()) if (p.userId === userId) p.userId = undefined;
@@ -1148,7 +1162,7 @@ function newRoom(code: string, host: Player): Room {
     timerEndsAt: 0,
     pendingNarration: "",
     chatMessages: [],
-    chatReports: [],
+    chatAuthors: new Map(),
     chatSeq: 0,
     lastChatAt: new Map(),
     timerSettings: { ...DEFAULT_TIMER_SETTINGS },
@@ -1197,6 +1211,10 @@ export function registerSocketHandlers(io: Server) {
         next(new Error("Unauthorized"));
         return;
       }
+      if (user.bannedAt) {
+        next(new Error("Account suspended"));
+        return;
+      }
       // Global cap protects the free VM. Players returning to a seat they hold
       // are always let back in so a full server never strands a live match.
       if (io.sockets.sockets.size >= MAX_SOCKETS && !userHasAnySeat(user.id)) {
@@ -1242,6 +1260,7 @@ export function registerSocketHandlers(io: Server) {
       const name = str(data?.name) || str(socket.data.userName);
       if (!name) { socket.emit("room-error", { message: "Display name is required" }); return; }
       if (name.length > 24) { socket.emit("room-error", { message: "Display name must be 24 characters or fewer" }); return; }
+      if (containsProfanity(name)) { socket.emit("room-error", { message: "Please choose a different display name." }); return; }
       releaseStaleSeats(io, socket.data.userId);
       if (socketInAnyRoom(socket.id) || userHasActiveSeat(socket.data.userId)) {
         socket.emit("room-error", { message: ALREADY_SEATED });
@@ -1321,6 +1340,7 @@ export function registerSocketHandlers(io: Server) {
       }
 
       if (name.length > 24) { socket.emit("room-error", { message: "Display name must be 24 characters or fewer" }); return; }
+      if (containsProfanity(name)) { socket.emit("room-error", { message: "Please choose a different display name." }); return; }
       releaseStaleSeats(io, socket.data.userId);
       if (socketInAnyRoom(socket.id) || userHasActiveSeat(socket.data.userId)) {
         socket.emit("room-error", { message: ALREADY_SEATED });
@@ -1438,7 +1458,7 @@ export function registerSocketHandlers(io: Server) {
         room.pendingNarration = "";
         room.winner = null;
         clearDayChat(room);
-        room.chatReports = [];
+        room.chatAuthors = new Map();
         room.forfeited = new Set();
 
         for (const [id, p] of Array.from(room.players.entries())) {
@@ -1486,7 +1506,8 @@ export function registerSocketHandlers(io: Server) {
         }
         room.lastChatAt.set(player.id, now);
         room.chatSeq += 1;
-        const message: ChatMessage = { id: String(room.chatSeq), name: player.name, text };
+        const message: ChatMessage = { id: String(room.chatSeq), name: player.name, text: maskProfanity(text) };
+        room.chatAuthors.set(message.id, player.userId);
         room.chatMessages.push(message);
         emitChatMessage(io, room, message);
         persistChatMessage({
@@ -1529,8 +1550,46 @@ export function registerSocketHandlers(io: Server) {
       }
     });
 
-    on("report-chat", (data: { id?: string }) => {
-      for (const [, room] of rooms.entries()) {
+    /** At most 10 reports per connection per 10 minutes, so reports can't be used to spam. */
+    const reportTimes: number[] = [];
+    const reportAllowed = () => {
+      const now = Date.now();
+      while (reportTimes.length && now - reportTimes[0] > 10 * 60 * 1000) reportTimes.shift();
+      if (reportTimes.length >= 10) return false;
+      reportTimes.push(now);
+      return true;
+    };
+
+    const fileReport = (
+      code: string,
+      reporter: Player,
+      reported: { userId?: string; name: string },
+      reason: unknown,
+      message: string | null,
+    ) => {
+      if (!reportAllowed()) {
+        socket.emit("room-error", { message: "You've sent a lot of reports. Try again later." });
+        return;
+      }
+      saveReport({
+        reporterId: reporter.userId ?? null,
+        reporterName: reporter.name,
+        reportedId: reported.userId ?? null,
+        reportedName: reported.name,
+        roomCode: code,
+        reason: normaliseReason(reason),
+        message,
+      })
+        .then(() => socket.emit("report-received"))
+        .catch((err) => {
+          logger.error({ err, code }, "Failed to save report");
+          socket.emit("room-error", { message: "Couldn't send the report. Try again." });
+        });
+      logger.info({ code, reportedName: reported.name, reason: normaliseReason(reason) }, "Report filed");
+    };
+
+    on("report-chat", (data: { id?: unknown; reason?: unknown } | undefined) => {
+      for (const [code, room] of rooms.entries()) {
         const player = room.players.get(socket.id);
         if (!player) continue;
         const message = room.chatMessages.find((entry) => entry.id === String(data?.id ?? ""));
@@ -1538,10 +1597,20 @@ export function registerSocketHandlers(io: Server) {
           socket.emit("room-error", { message: "Message not found." });
           return;
         }
-        if (!room.chatReports.some((entry) => entry.id === message.id)) {
-          room.chatReports.push(message);
-        }
-        logger.info({ name: message.name, text: message.text, reportedBy: player.name }, "Chat reported");
+        fileReport(code, player, { userId: room.chatAuthors.get(message.id), name: message.name }, data?.reason ?? "harassment", message.text);
+        return;
+      }
+    });
+
+    on("report-player", (data: { targetId?: unknown; reason?: unknown } | undefined) => {
+      const targetId = targetIdOf(data);
+      if (!targetId) return;
+      for (const [code, room] of rooms.entries()) {
+        const player = room.players.get(socket.id);
+        if (!player) continue;
+        const target = room.players.get(targetId);
+        if (!target || target.id === socket.id) return;
+        fileReport(code, player, { userId: target.userId, name: target.name }, data?.reason, null);
         return;
       }
     });

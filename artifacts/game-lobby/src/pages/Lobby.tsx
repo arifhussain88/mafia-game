@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Flag } from "lucide-react";
 import type { Player } from "@/App";
 import HowToPlay from "@/components/HowToPlay";
+import ReportPlayerDialog from "@/components/ReportPlayerDialog";
 
 function sanitizeRoomCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -65,6 +66,7 @@ type Props = {
   timerSettings: TimerSettings;
   onStartGame: () => void;
   onKickPlayer: (targetId: string) => void;
+  onReportPlayer: (targetId: string, reason: string) => void;
   onTimerSettingsChange: (next: TimerSettings) => void;
 };
 
@@ -125,9 +127,11 @@ export default function Lobby({
   timerSettings,
   onStartGame,
   onKickPlayer,
+  onReportPlayer,
   onTimerSettingsChange,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [reportTarget, setReportTarget] = useState<Player | null>(null);
   const [kickConfirm, setKickConfirm] = useState<string | null>(null);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
 
@@ -206,6 +210,17 @@ export default function Lobby({
                       {isMe && <span className="text-gray-600 text-sm ml-2 font-normal">(you)</span>}
                     </p>
                   </div>
+                  {!isMe && (
+                    <button
+                      type="button"
+                      onClick={() => setReportTarget(player)}
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-gray-600 hover:text-amber-300 hover:bg-amber-950/30 transition-colors flex-shrink-0 cursor-pointer"
+                      title={`Report ${player.name}`}
+                      aria-label={`Report ${player.name}`}
+                    >
+                      <Flag className="h-4 w-4" aria-hidden />
+                    </button>
+                  )}
                   {isHost && !isMe && (
                     <button
                       onClick={() => handleKick(player.id)}
@@ -289,6 +304,14 @@ export default function Lobby({
         </button>
       </div>
       <HowToPlay open={howToPlayOpen} onOpenChange={setHowToPlayOpen} />
+      <ReportPlayerDialog
+        playerName={reportTarget?.name ?? null}
+        onClose={() => setReportTarget(null)}
+        onSubmit={(reason) => {
+          if (reportTarget) onReportPlayer(reportTarget.id, reason);
+          setReportTarget(null);
+        }}
+      />
     </div>
   );
 }
