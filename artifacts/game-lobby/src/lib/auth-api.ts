@@ -31,6 +31,11 @@ export async function postAuth<T>(path: string, body: unknown, token?: string | 
     // Non-JSON (proxy error page etc.)
   }
   if (!res.ok) {
+    // A 5xx with no JSON body comes from a proxy (Caddy / Vite) when the game
+    // server itself is down, not from our API.
+    if (data === null && res.status >= 500) {
+      throw new AuthError("The game server isn't responding. Try again in a minute.", res.status);
+    }
     const message = (data as { message?: string } | null)?.message ?? "Something went wrong. Try again.";
     throw new AuthError(message, res.status);
   }
