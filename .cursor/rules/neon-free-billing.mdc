@@ -1,0 +1,28 @@
+---
+description: Neon Free billing guardrails for Mafia Wars — never upgrade or touch other projects
+alwaysApply: true
+---
+
+# Neon Free billing (Mafia Wars)
+
+Org **Sayed** (`org-still-lake-29205772`) stays on Neon **Free ($0)** until the user upgrades it themselves in the Neon console.
+
+## Never do
+
+- Upgrade the org to Launch/Scale, or any paid Neon plan
+- Edit, delete, or reconfigure `northline-revamp` or `northlinestore`
+- Create projects outside name `mafia-wars` for this game
+- Use any region other than `aws-ap-southeast-1` (Singapore) for `mafia-wars`
+- Set compute above **0.25 CU**, or set `suspend_timeout_seconds` to `-1` (always on)
+- Disable scale-to-zero
+- Enable Object Storage, Functions, AI Gateway, Realtime, or Managed Auth on `mafia-wars`
+- Put a Neon API key on the Oracle VM — production may only get `DATABASE_URL`
+- Set production `DATABASE_URL` on Oracle until the user explicitly asks
+
+## If a Free cap suspends the DB
+
+Leave it suspended until the next billing period. Do **not** upgrade to turn it back on. Stop and ask the user.
+
+## If a task needs a paid Neon feature
+
+Stop and ask. Do not work around by upgrading.

@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Mafia Wars",
+    "slug": "mafia-wars",
+    "scheme": "mafiawars",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b0b0f",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.mafiawars.app"
+    },
+    "android": {
+      "package": "com.mafiawars.app",
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#0b0b0f",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "extra": {
+      "gameUrl": "http://141.148.204.30"
+    }
+  }
+}

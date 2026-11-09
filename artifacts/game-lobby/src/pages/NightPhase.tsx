@@ -4,6 +4,7 @@ import { useCountdown } from "@/hooks/useCountdown";
 import { useCircleSize } from "@/hooks/useCircleSize";
 import { playTimerAlert } from "@/lib/audio";
 import PlayerCircle, { type ActionMode } from "@/components/PlayerCircle";
+import RoleCard from "@/components/RoleCard";
 
 type NightStep = "night-mafia" | "night-doctor" | "night-detective";
 
@@ -84,6 +85,18 @@ export default function NightPhase({
     return () => clearTimeout(t);
   }, [phase]);
 
+  // Detective hit: start face-down, then flip to Mafia face
+  const [mafiaCardFlipped, setMafiaCardFlipped] = useState(false);
+  useEffect(() => {
+    if (!detectiveResult?.isMafia) {
+      setMafiaCardFlipped(false);
+      return;
+    }
+    setMafiaCardFlipped(false);
+    const t = setTimeout(() => setMafiaCardFlipped(true), 120);
+    return () => clearTimeout(t);
+  }, [detectiveResult]);
+
   const me = players.find((p) => p.id === mySocketId);
   const amAlive = me?.alive ?? false;
   const activeRole = STEP_ROLE[phase];
@@ -129,17 +142,13 @@ export default function NightPhase({
     return (
       <div className="min-h-screen flex flex-col items-center px-4 py-6 md:py-10">
 
-        {/* Header */}
-        <div className="w-full max-w-sm md:max-w-2xl mb-3 md:mb-4">
+        <div className="game-panel w-full max-w-sm md:max-w-2xl px-4 py-4 md:px-6 md:py-5 mb-3 md:mb-4">
           <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-3">
-              <span className="text-xl md:text-2xl">🌙</span>
-              <div>
-                <h1 className="text-xl md:text-2xl font-bold text-gray-200 tracking-widest">NIGHT</h1>
-                <p className="text-xs md:text-sm font-semibold tracking-wider" style={{ color: roleColor }}>
-                  {ROLE_LABEL[myRole]}
-                </p>
-              </div>
+            <div>
+              <h1 className="font-display text-xl md:text-2xl font-bold text-gray-200 tracking-widest">NIGHT</h1>
+              <p className="text-xs md:text-sm font-semibold tracking-wider" style={{ color: roleColor }}>
+                {ROLE_LABEL[myRole]}
+              </p>
             </div>
             <div className={`text-3xl md:text-4xl font-mono font-bold tabular-nums ${countdownCls}`}>
               {countdown}s
@@ -166,22 +175,34 @@ export default function NightPhase({
 
         {/* Status / detective inline result */}
         <div className="text-center min-h-[48px] flex flex-col items-center justify-center gap-1 w-full max-w-sm md:max-w-lg mt-3">
-          {myRole === "detective" && detectiveResult && (
+          {myRole === "detective" && detectiveResult && detectiveResult.isMafia && (
+            <div
+              className="rounded-xl border px-5 py-4 w-full flex flex-col items-center gap-3"
+              style={{
+                background: "rgba(127,0,0,0.18)",
+                borderColor: "#7f1d1d",
+              }}
+            >
+              <p className="text-xs md:text-sm text-gray-500 uppercase tracking-widest">Investigation result</p>
+              <RoleCard role="mafia" flipped={mafiaCardFlipped} width={120} animate />
+              <p className="text-base md:text-lg font-bold text-red-400 text-center">
+                {detectiveResult.targetName} is Mafia.
+              </p>
+              <p className="text-xs text-gray-600">Only you can see this. Day begins in a moment.</p>
+            </div>
+          )}
+
+          {myRole === "detective" && detectiveResult && !detectiveResult.isMafia && (
             <div
               className="rounded-xl border px-5 py-3 w-full"
               style={{
-                background: detectiveResult.isMafia ? "rgba(127,0,0,0.18)" : "rgba(0,60,30,0.18)",
-                borderColor: detectiveResult.isMafia ? "#7f1d1d" : "#134e2a",
+                background: "rgba(0,60,30,0.18)",
+                borderColor: "#134e2a",
               }}
             >
               <p className="text-xs md:text-sm text-gray-500 mb-1 uppercase tracking-widest">Investigation result</p>
-              <p
-                className="text-base md:text-lg font-bold"
-                style={{ color: detectiveResult.isMafia ? "#ef4444" : "#34d399" }}
-              >
-                {detectiveResult.isMafia
-                  ? `${detectiveResult.targetName} is Mafia.`
-                  : `${detectiveResult.targetName} is not Mafia.`}
+              <p className="text-base md:text-lg font-bold text-emerald-400">
+                {detectiveResult.targetName} is not Mafia.
               </p>
               <p className="text-xs text-gray-600 mt-1">Only you can see this. Day begins in a moment.</p>
             </div>
@@ -214,21 +235,19 @@ export default function NightPhase({
 
   // Waiting screen — shows who is active this phase, with fade-in on phase change
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center px-6"
-
-    >
-      <div className="flex flex-col items-center gap-8 text-center">
-        {/* Pulsing moon */}
+    <div className="min-h-screen flex flex-col items-center justify-center px-6">
+      <div className="game-panel w-full max-w-sm px-6 py-10 flex flex-col items-center gap-8 text-center">
         <div className="relative">
           <div
             className="absolute inset-0 rounded-full animate-ping opacity-10"
             style={{ background: "#c8a04a", transform: "scale(1.6)" }}
           />
-          <span className="text-5xl md:text-7xl relative">🌙</span>
+          <div
+            className="relative w-16 h-16 md:w-20 md:h-20 rounded-full border border-amber-500/40 bg-amber-950/40"
+            aria-hidden
+          />
         </div>
 
-        {/* Phase-specific message — fades in when phase changes */}
         <div
           style={{
             transition: "opacity 0.5s ease",
@@ -236,15 +255,14 @@ export default function NightPhase({
           }}
           className="flex flex-col gap-2"
         >
-          <p className="text-gray-400 text-lg md:text-2xl font-medium tracking-wide">
+          <p className="font-display text-gray-200 text-lg md:text-2xl font-medium tracking-wide">
             {WAITING_MSG[phase]}
           </p>
-          <p className="text-gray-700 text-sm md:text-base">
+          <p className="text-gray-500 text-sm md:text-base">
             Stay quiet.
           </p>
         </div>
 
-        {/* Subtle dots */}
         <div className="flex gap-2 mt-2">
           {[0, 1, 2].map((i) => (
             <div

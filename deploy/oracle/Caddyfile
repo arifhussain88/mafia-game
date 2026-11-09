@@ -1,0 +1,12 @@
+# Caddy reverse proxy for the game (Node listens on 127.0.0.1:8080 only).
+#
+# {{SITE}} is filled in by pack-release.ps1 from deploy/oracle/game-host:
+#   - a hostname (e.g. mafiagame.duckdns.org) -> Caddy fetches and renews a
+#     Let's Encrypt certificate itself, serves HTTPS on 443 and redirects 80 -> 443.
+#     Ports 80 AND 443 must be open (OCI security list + VM iptables): 80 is
+#     needed for the certificate challenge.
+#   - empty -> ":80", plain HTTP on the bare IP (old behaviour).
+{{SITE}} {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}

@@ -19,6 +19,7 @@ type Props = {
   onDayVote: (targetId: string) => void;
 };
 
+
 export default function DayPhase({
   subPhase,
   players,
@@ -48,7 +49,8 @@ export default function DayPhase({
   const amAlive = me?.alive ?? false;
   const isVoting = subPhase === "day-vote";
 
-  const actionMode: ActionMode = isVoting && amAlive ? "day-vote" : "none";
+  // Lock circle after first cast — highlight stays via selectedId
+  const actionMode: ActionMode = isVoting && amAlive && !myDayVote ? "day-vote" : "none";
 
   const totalVotes = Object.values(dayVotes).reduce((a, b) => a + b, 0);
 
@@ -57,20 +59,15 @@ export default function DayPhase({
 
   return (
     <div className="min-h-screen flex flex-col items-center px-4 py-6 md:py-10">
-
-      {/* Header */}
-      <div className="w-full max-w-sm md:max-w-2xl mb-3 md:mb-4">
+      <div className="game-panel w-full max-w-sm md:max-w-2xl px-4 py-4 md:px-6 md:py-5 mb-3 md:mb-4">
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-3">
-            <span className="text-xl md:text-2xl">☀️</span>
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold text-amber-100 tracking-widest">
-                {isVoting ? "VOTE" : "DAY"}
-              </h1>
-              <p className="text-xs md:text-sm text-amber-800 font-medium">
-                {isVoting ? "Tap a player to vote them out" : "Discuss — then vote begins"}
-              </p>
-            </div>
+          <div>
+            <h1 className="font-display text-xl md:text-2xl font-bold text-amber-100 tracking-widest">
+              {isVoting ? "VOTE" : "DAY"}
+            </h1>
+            <p className="text-xs md:text-sm text-amber-700/90 font-medium">
+              {isVoting ? "Tap a player to vote them out" : "Discuss — then vote begins"}
+            </p>
           </div>
           <div className={`text-3xl md:text-4xl font-mono font-bold tabular-nums ${countdownCls}`}>
             {countdown}s
@@ -82,7 +79,7 @@ export default function DayPhase({
       <div className="w-full max-w-sm md:max-w-lg flex flex-col gap-3 mb-3 md:mb-5">
         {narration && (
           <div className="w-full px-4 py-3 rounded-xl bg-gray-900/70 border border-gray-700">
-            <p className="text-[10px] md:text-xs font-semibold text-gray-500 uppercase tracking-widest mb-1">Last Night</p>
+            <p className="text-[10px] md:text-xs font-semibold text-amber-600/90 uppercase tracking-widest mb-1">Last Night</p>
             <p className="text-gray-200 text-sm md:text-base leading-relaxed">{narration}</p>
           </div>
         )}

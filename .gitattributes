@@ -1,0 +1,3 @@
+# Bash scripts must stay LF; CRLF breaks `set -o pipefail` on Linux VMs.
+*.sh text eol=lf
+deploy/oracle/*.sh text eol=lf

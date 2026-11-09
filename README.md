@@ -56,19 +56,22 @@ pnpm approve-builds --all
 ### 3. Start the API server (Terminal 1)
 
 ```bash
-pnpm --filter @workspace/api-server run dev
+cd artifacts/api-server
+npm run dev
 ```
 
-You should see output like:
-```
-Server listening on port 3001
-```
+(Or from the repo root: `pnpm --filter @workspace/api-server run dev`. If `pnpm` is not on your PATH, use `corepack pnpm` instead.)
+
+You should see `Server listening` with `port: 8080`. The frontend proxies `/api` and `/socket.io` to port 8080, so keep that port free. If something else already holds it, the server stops with "HTTP server failed to start".
 
 ### 4. Start the frontend dev server (Terminal 2)
 
 ```bash
-pnpm --filter @workspace/game-lobby run dev
+cd artifacts/game-lobby
+npm run dev
 ```
+
+(Or `pnpm --filter @workspace/game-lobby run dev`.) Windows PowerShell 5.1 does not accept `&&`, so run each command on its own line or join them with `;`.
 
 You should see output like:
 ```
@@ -85,6 +88,15 @@ You should see:
   ➜  Network: http://192.168.x.x:5173/
 ```
 
+### Tests
+
+```bash
+cd artifacts/api-server
+npm test
+```
+
+Builds the server and runs the security and gameplay tests in `artifacts/api-server/test/` against it (about 90 seconds). CI runs the same tests, plus a dependency audit and a release smoke test, on every push and PR. Merging to `main` deploys to Oracle; see `deploy/oracle/DEPLOY_ORACLE.md`.
+
 ### 5. Open the game
 
 Open **http://localhost:5173** in your browser. That's it — you're in!
@@ -96,7 +108,7 @@ Open **http://localhost:5173** in your browser. That's it — you're in!
 
 ## 🎮 How to Play
 
-### Minimum Players: **5**
+### Minimum Players: **3** (7+ adds a second Mafia)
 
 ### Game Flow
 
@@ -250,16 +262,6 @@ This instantly gives you a `https://xxxxx.trycloudflare.com` URL. Same proxy not
 
 ---
 
-### Option 5: Deploy to Replit (Cloud Hosting)
-
-This project was originally built on Replit and includes `.replit` configuration:
-
-1. Import this repo into a [Replit](https://replit.com/) project.
-2. Click **Run** — Replit handles ports and gives you a public URL automatically.
-3. Share the Replit URL with testers.
-
----
-
 ## 📁 Project Structure
 
 ```
@@ -274,6 +276,10 @@ Mafia-Wars/
 │   │   │   └── lib/             # Logger, utilities
 │   │   ├── build.mjs            # esbuild config
 │   │   └── package.json
+│   │
+│   ├── mobile-app/              # Expo Android app: a WebView shell around the web game
+│   │   ├── App.tsx              # Back button, offline screen, external links
+│   │   └── app.config.js        # Game URL → Android cleartext on/off
 │   │
 │   └── game-lobby/              # React + Vite frontend
 │       ├── src/
@@ -305,6 +311,8 @@ Mafia-Wars/
 │   ├── api-zod/                  # Zod validation schemas
 │   └── db/                       # Drizzle ORM / DB schema
 │
+├── deploy/oracle/                # Oracle Always Free VM: build, Caddy (HTTPS), systemd
+│
 ├── pnpm-workspace.yaml           # Monorepo workspace config
 ├── package.json                  # Root scripts
 └── README.md                     # ← You are here
@@ -315,10 +323,10 @@ Mafia-Wars/
 ## ❗ Common Issues
 
 ### "PORT environment variable is required"
-Both the API server and the Vite dev server require a `PORT` env var. See the [Quick Start](#-quick-start-local) commands above.
+The Vite configuration requires a `PORT` value when it is loaded directly. The game-lobby `dev` and `build` scripts provide `5173` by default; set `PORT` explicitly when using another port or a deployment workflow. See the [Quick Start](#-quick-start-local) commands above.
 
 ### "BASE_PATH environment variable is required"
-The Vite config requires `BASE_PATH`. Set it to `/` for local development.
+The game-lobby `dev` and `build` scripts use `/` by default. Set `BASE_PATH` explicitly when the frontend is deployed below a URL subpath.
 
 ### WebSocket connection failed
 - Make sure the API server is running on port 5000 before starting the frontend.

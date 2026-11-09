@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Redeploy app bits from /tmp/mafia-wars-release.tar without wiping accounts.
+# Does NOT reinstall Node/Caddy or recreate /data/users.json.
+# Usage (on VM): bash /tmp/remote-update.sh
+
+TAR="${1:-/tmp/mafia-wars-release.tar}"
+if [[ ! -f "$TAR" ]]; then
+  echo "Missing release tarball: $TAR" >&2
+  echo "Upload with: scp deploy/oracle/mafia-wars-release.tar ubuntu@HOST:/tmp/" >&2
+  exit 1
+fi
+
+# Sanity-check the tarball before touching the live app.
+if ! tar -tf "$TAR" | grep -qx './index.mjs'; then
+  echo "Release tarball has no index.mjs; refusing to deploy." >&2
+  exit 1
+fi
+
+# Keep the running version so a bad release can be rolled back automatically.
+PREV=/opt/mafia-wars.prev
+sudo rm -rf "$PREV"
+if [[ -f /opt/mafia-wars/index.mjs ]]; then
+  sudo cp -a /opt/mafia-wars "$PREV"
+  sudo cp -a /etc/caddy/Caddyfile "$PREV/.Caddyfile.live" 2>/dev/null || true
+fi
+
+rollback() {
+  echo "!! New release is unhealthy - rolling back to the previous version" >&2
+  sudo journalctl -u mafia-wars -n 30 --no-pager >&2 || true
+  if [[ -d "$PREV" ]]; then
+    sudo systemctl stop mafia-wars || true
+    sudo rm -rf /opt/mafia-wars
+    sudo cp -a "$PREV" /opt/mafia-wars
+    if [[ -f /opt/mafia-wars/.Caddyfile.live ]]; then
+      sudo cp /opt/mafia-wars/.Caddyfile.live /etc/caddy/Caddyfile
+      sudo systemctl reload caddy || sudo systemctl restart caddy || true
+    fi
+    sudo systemctl start mafia-wars
+    echo "Rolled back. The previous version is serving again." >&2
+  else
+    echo "No previous version to roll back to." >&2
+  fi
+  exit 1
+}
+
+echo "==> Stopping mafia-wars"
+sudo systemctl stop mafia-wars
+
+echo "==> Replacing /opt/mafia-wars (keeping /data)"
+sudo mkdir -p /opt/mafia-wars
+sudo rm -rf /opt/mafia-wars/*
+sudo tar -xf "$TAR" -C /opt/mafia-wars
+sudo chown -R ubuntu:ubuntu /opt/mafia-wars
+
+if [[ -f /opt/mafia-wars/mafia-wars.service ]]; then
+  echo "==> Refreshing systemd unit"
+  sudo mv /opt/mafia-wars/mafia-wars.service /etc/systemd/system/mafia-wars.service
+  NODE_BIN="$(command -v node)"
+  sudo sed -i "s|/usr/bin/node|${NODE_BIN}|g" /etc/systemd/system/mafia-wars.service
+  sudo systemctl daemon-reload
+fi
+
+# Oracle Ubuntu images ship iptables rules that REJECT everything except SSH.
+# HTTPS needs 443, and 80 stays open for the Let's Encrypt challenge + redirect.
+# (The OCI VCN security list must allow both too; that part is in the console.)
+echo "==> Ensuring VM firewall allows 80 and 443"
+for PORT in 80 443; do
+  if ! sudo iptables -C INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; then
+    sudo iptables -I INPUT 1 -p tcp --dport "$PORT" -j ACCEPT
+    echo "    opened tcp/$PORT"
+  fi
+done
+if command -v netfilter-persistent >/dev/null 2>&1; then sudo netfilter-persistent save >/dev/null || true; fi
+
+if [[ -f /opt/mafia-wars/Caddyfile ]]; then
+  echo "==> Refreshing Caddyfile"
+  sudo mv /opt/mafia-wars/Caddyfile /etc/caddy/Caddyfile
+  sudo systemctl reload caddy || sudo systemctl restart caddy
+fi
+
+echo "==> Starting mafia-wars"
+sudo systemctl start mafia-wars
+
+echo "==> Waiting for the app to report healthy"
+healthy=0
+for _ in $(seq 1 30); do
+  if curl -fsS --max-time 3 http://127.0.0.1:8080/api/healthz >/dev/null 2>&1; then healthy=1; break; fi
+  sleep 1
+done
+[[ "$healthy" == 1 ]] || rollback
+sudo systemctl --no-pager --full status mafia-wars || true
+curl -sS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8080/ || true
+curl -sS -o /dev/null -w "HTTP80 %{http_code}\n" http://127.0.0.1/ || true
+
+if [[ -f /etc/mafia-wars.env ]]; then
+  echo "==> Neon checks (/etc/mafia-wars.env present)"
+  if ! grep -q 'EnvironmentFile=.*mafia-wars.env' /etc/systemd/system/mafia-wars.service; then
+    echo "FAIL: systemd unit missing EnvironmentFile for mafia-wars.env" >&2
+    rollback
+  fi
+  MARKER=$(grep -c 'DbUnavailableError' /opt/mafia-wars/index.mjs || true)
+  if [[ "$MARKER" -lt 1 ]]; then
+    echo "FAIL: index.mjs lacks Neon marker DbUnavailableError (old binary?)" >&2
+    rollback
+  fi
+  ListenPID=$(sudo ss -lptn 'sport = :8080' | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)
+  ENV_COUNT=0
+  if [[ -n "${ListenPID}" ]]; then
+    ENV_COUNT=$(sudo tr '\0' '\n' < /proc/"$ListenPID"/environ | grep -c '^DATABASE_URL=' || true)
+  fi
+  if [[ "$ENV_COUNT" -lt 1 ]]; then
+    echo "FAIL: listener PID missing DATABASE_URL in environ" >&2
+    rollback
+  fi
+  JOURNAL=$(sudo journalctl -u mafia-wars -n 40 --no-pager || true)
+  if ! echo "$JOURNAL" | grep -q '"authStore":"neon"'; then
+    echo "FAIL: journal does not show authStore neon" >&2
+    echo "$JOURNAL" | tail -n 20 >&2 || true
+    rollback
+  fi
+  echo "OK: neon_marker=$MARKER env_on_listener=$ENV_COUNT authStore=neon"
+fi
+
+SITE=$(head -n 20 /etc/caddy/Caddyfile | grep -m1 -E '^[^#[:space:]].*\{' | awk '{print $1}')
+if [[ -n "$SITE" && "$SITE" != ":80" ]]; then
+  echo "==> HTTPS check for $SITE (first run may take ~30s while Caddy gets the certificate)"
+  curl -sS -o /dev/null -w "HTTPS %{http_code}\n" "https://$SITE/api/healthz" || echo "HTTPS not ready yet: check 'journalctl -u caddy -n 50' and the OCI security list (80 + 443)."
+  echo "==> Done. Public: https://$SITE/"
+else
+  echo "==> Done. Public: http://$(curl -s ifconfig.me 2>/dev/null || echo 141.148.204.30)/"
+fi
+echo "Accounts file untouched: /data/users.json"
+echo "Note: updating the unit file alone does not update index.mjs - this script replaces /opt/mafia-wars."
