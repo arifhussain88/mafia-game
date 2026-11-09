@@ -88,6 +88,15 @@ You should see:
   ➜  Network: http://192.168.x.x:5173/
 ```
 
+### Tests
+
+```bash
+cd artifacts/api-server
+npm test
+```
+
+Builds the server and runs the security and gameplay tests in `artifacts/api-server/test/` against it (about 90 seconds). CI runs the same tests, plus a dependency audit and a release smoke test, on every push and PR. Merging to `main` deploys to Oracle; see `deploy/oracle/DEPLOY_ORACLE.md`.
+
 ### 5. Open the game
 
 Open **http://localhost:5173** in your browser. That's it — you're in!

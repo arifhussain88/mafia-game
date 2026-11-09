@@ -1,11 +1,11 @@
 # Oracle Always Free — deploy Mafia Wars
 
 **Live URL:** http://141.148.204.30/  
-**Production branch:** `feature/done-live`  
+**Production branch:** `main`, deployed automatically by GitHub Actions on every push or merged PR (see "GitHub Actions" below)  
 **Runtime on the VM:** Node.js 22 + systemd (`mafia-wars`) + Caddy on `:80` → `127.0.0.1:8080`  
 **Not used:** Docker. Node runs directly under systemd; keep it that way on the Always Free micro.
 
-Scripts in this folder were first committed on `feature/oracle-cutover` (`da470cf` / `a32e398`). Keep them on `feature/done-live` so deploy steps are never orphaned on another branch again.
+Keep this folder on `main` so the deploy steps always travel with the code they deploy.
 
 ---
 
@@ -46,6 +46,73 @@ Moving to a paid domain later is the same steps with the new name, plus an app u
 
 ---
 
+## GitHub Actions: automatic deploy from `main`
+
+**`main` is the production branch.** Every push to `main` (normally a merged pull request) deploys to this VM through `.github/workflows/deploy-oracle.yml`. Do feature work on other branches and open a PR into `main`.
+
+### What runs, in order
+
+Every push to a feature branch and every PR into `main` runs `ci.yml` (gates 1–6). A push to `main` runs `deploy-oracle.yml`: the same gates, then the deploy. If any step fails, nothing is sent to the VM.
+
+| # | Step | What it catches |
+|---|------|-----------------|
+| 1 | `pnpm install --frozen-lockfile` | lockfile out of date with `package.json` |
+| 2 | `pnpm run typecheck` | type errors in the server, web game, mobile app and libs |
+| 3 | `node .github/scripts/audit-shipped.mjs` | high/critical CVEs in packages that ship to players. Expo build tooling is only reported, not blocking |
+| 4 | `pnpm --filter @workspace/api-server run test` | security and gameplay tests against the built server (`artifacts/api-server/test/`) |
+| 5 | `deploy/oracle/pack-release.sh` | build failures; produces the same tarball as `pack-release.ps1` |
+| 6 | `deploy/oracle/smoke-test-release.sh` | the packaged release boots in production mode and serves the API, game and legal pages |
+| 7 | `scp` + `ssh … remote-update.sh` (deploy only) | installs on the VM. **Keeps the previous version and rolls back automatically** if the new one isn't healthy within 30s or the Neon checks fail |
+| 8 | public health check (deploy only) | `<PUBLIC_URL>/api/healthz` answers after the deploy |
+
+Deploys run one at a time; a second push waits for the first to finish.
+
+### One-time setup (you do this; it needs your GitHub and VM access)
+
+1. **Create a deploy-only SSH key** on your PC. Use a separate key without a passphrase, never your personal `oracle_mafia` key:
+
+   ```powershell
+   ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\mafia_deploy" -N '""' -C github-actions-deploy
+   ```
+
+2. **Allow that key on the VM** (uses your normal key once):
+
+   ```powershell
+   type "$env:USERPROFILE\.ssh\mafia_deploy.pub" | ssh -i "$env:USERPROFILE\.ssh\oracle_mafia" ubuntu@141.148.204.30 "cat >> ~/.ssh/authorized_keys"
+   ```
+
+3. **Create the `production` environment** in GitHub: repo **Settings → Environments → New environment →** `production`. Optionally add yourself under *Required reviewers*; then every deploy waits for your click. Under *Deployment branches*, pick **Selected branches → main**.
+
+4. **Add these to the `production` environment:**
+
+   | Kind | Name | Value |
+   |------|------|-------|
+   | Secret | `ORACLE_SSH_KEY` | full contents of `%USERPROFILE%\.ssh\mafia_deploy` (the private key) |
+   | Secret | `ORACLE_KNOWN_HOSTS` | output of `ssh-keygen -F 141.148.204.30` (the VM's host key, from a machine that has connected before) |
+   | Variable | `ORACLE_HOST` | `141.148.204.30` |
+   | Variable | `ORACLE_USER` | `ubuntu` |
+   | Variable | `PUBLIC_URL` | `http://141.148.204.30` (later `https://<your-duckdns-name>`) |
+
+   The same thing with the GitHub CLI (from the repo folder, PowerShell):
+
+   ```powershell
+   Get-Content -Raw "$env:USERPROFILE\.ssh\mafia_deploy" | gh secret set ORACLE_SSH_KEY --env production
+   ssh-keygen -F 141.148.204.30 | Select-String -NotMatch '^#' | Out-String | gh secret set ORACLE_KNOWN_HOSTS --env production
+   gh variable set ORACLE_HOST --env production --body 141.148.204.30
+   gh variable set ORACLE_USER --env production --body ubuntu
+   gh variable set PUBLIC_URL --env production --body http://141.148.204.30
+   ```
+
+5. **Protect `main`** (recommended): Settings → Branches → add a rule for `main` → *Require a pull request* and *Require status checks to pass* → pick **CI / Typecheck, audit, test, build**. A broken PR then can't be merged, so it can't deploy.
+
+To redeploy without a code change: **Actions → Deploy to Oracle → Run workflow** (on `main`).
+
+### Manual deploy still works
+
+Section B below is unchanged and is the fallback if GitHub is down or you need to hot-fix from your PC.
+
+---
+
 ## A. First-time setup (already done on live VM)
 
 Only needed on a **new** Always Free Ubuntu VM.
@@ -57,7 +124,7 @@ In the OCI console, add ingress rules for TCP 80 and 443 (source `0.0.0.0/0`) to
 ### 2. On your Windows PC (repo root)
 
 ```powershell
-git checkout feature/done-live
+git checkout main
 git pull
 powershell -File deploy/oracle/pack-release.ps1
 scp -i $env:USERPROFILE\.ssh\oracle_mafia deploy/oracle/mafia-wars-release.tar ubuntu@141.148.204.30:/tmp/
@@ -88,12 +155,12 @@ Open http://141.148.204.30/ — expect HTTP 200.
 
 ## B. Update / redeploy (normal path after code changes)
 
-Do this whenever `feature/done-live` has new commits to ship.
+Manual fallback. Normally GitHub Actions does this for you when `main` changes.
 
-### 1. On Windows (repo root, on `feature/done-live`)
+### 1. On Windows (repo root, on `main`)
 
 ```powershell
-git checkout feature/done-live
+git checkout main
 git pull
 powershell -File deploy/oracle/pack-release.ps1
 scp -i $env:USERPROFILE\.ssh\oracle_mafia deploy/oracle/mafia-wars-release.tar ubuntu@141.148.204.30:/tmp/
@@ -184,6 +251,8 @@ sudo systemctl restart mafia-wars
 | `mafia-wars.service` | systemd unit packaged into the tarball |
 | `Caddyfile` | reverse proxy template; `{{SITE}}` is filled from `game-host` |
 | `game-host` | one line: the public hostname for HTTPS (empty = HTTP on `:80`) |
+| `pack-release.sh` | Linux/CI version of `pack-release.ps1` (same tarball) |
+| `smoke-test-release.sh` | boots the tarball in production mode and checks the API, game and legal pages |
 | `.gitignore` | ignores `release/` and `*.tar` |
 
 ---
@@ -198,6 +267,6 @@ sudo systemctl restart mafia-wars
 
 ---
 
-## F. Why these steps were missing before
+## F. History
 
-Deploy assets were committed on **`feature/oracle-cutover`**, not merged into **`feature/done-live`**. Working trees on later branches had no `deploy/oracle/`, so it looked like “Docker + Node” with no saved runbook. Canonical path for Oracle is this folder + this document on `feature/done-live`.
+The deploy assets once lived only on side branches (`feature/oracle-cutover`, then `feature/done-live`), which made them easy to lose. Since moving production to `main` with GitHub Actions, this folder and document live on `main`.

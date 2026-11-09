@@ -914,15 +914,40 @@ function socketInAnyRoom(socketId: string): boolean {
   return false;
 }
 
-/** Drop this user's stale seats (released lobby seats, finished matches) before they sit elsewhere. */
+/**
+ * Drop this user's stale seats before they sit elsewhere: a lobby seat in its
+ * grace window is released, a finished match forgets them, and a dropped seat
+ * in a running match is forfeited (choosing a new room = leaving the old one;
+ * otherwise a lost phone or room code would lock them out until it ends).
+ * Seats that are actively connected on another device are left alone.
+ */
 function releaseStaleSeats(io: Server, userId: unknown) {
   if (typeof userId !== "string") return;
   for (const [code, room] of rooms) {
     const seat = findSeatByUser(room, userId);
-    if (!seat || seat.connected) continue;
+    if (!seat || seat.connected || hasForfeited(room, seat)) continue;
     if (room.phase === "lobby") removeLobbySeat(io, code, room, seat);
     else if (room.phase === "game-over") seat.userId = undefined;
+    else forfeitSeat(io, code, room, seat);
   }
+}
+
+/**
+ * Intentional leave from a running match: the seat is detached from its socket
+ * at once (so the user can sit elsewhere) and turns into a forfeit after a
+ * short grace so the table sees it happen.
+ */
+function forfeitSeat(io: Server, code: string, room: Room, player: Player) {
+  room.forfeited.add(seatKey(player));
+  player.connected = false;
+  clearPlayerActions(room, player.id);
+  const detachedId = player.id.startsWith("left:") ? player.id : `left:${player.id}`;
+  rebindSeat(room, player, detachedId);
+  maybeAdvanceNightAfterAbsence(io, code, room);
+  emitPlayersUpdated(io, code, room);
+  const grace = setTimeout(() => applyForfeit(io, code, detachedId), TIMERS.FORFEIT_GRACE);
+  room.pendingForfeits.set(detachedId, grace);
+  logger.info({ code, name: player.name }, "Player leave started — forfeit after grace");
 }
 
 function removeLobbySeat(io: Server, code: string, room: Room, seat: Player) {
@@ -1497,23 +1522,9 @@ export function registerSocketHandlers(io: Server) {
           return;
         }
 
-        const name = player.name;
-        room.forfeited.add(seatKey(player));
-        player.connected = false;
-        clearPlayerActions(room, socket.id);
-        // Detach the seat from this socket so the user is free to sit in a new
-        // room right away; the seat itself stays until the forfeit lands.
-        const detachedId = `left:${socket.id}`;
-        rebindSeat(room, player, detachedId);
-        maybeAdvanceNightAfterAbsence(io, code, room);
-        emitPlayersUpdated(io, code, room);
-
-        const grace = setTimeout(() => applyForfeit(io, code, detachedId), TIMERS.FORFEIT_GRACE);
-        room.pendingForfeits.set(detachedId, grace);
-
+        forfeitSeat(io, code, room, player);
         void socket.leave(code);
         socket.emit("left-game");
-        logger.info({ code, name }, "Player leave started — forfeit after grace");
         return;
       }
     });

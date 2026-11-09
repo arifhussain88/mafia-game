@@ -1,0 +1,112 @@
+# Deploys the game to the Oracle Always Free VM whenever main changes
+# (a merged pull request or a direct push), or when started by hand from the
+# Actions tab. Setup and secrets: deploy/oracle/DEPLOY_ORACLE.md, section "GitHub Actions".
+name: Deploy to Oracle
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits instead of cutting a deploy in half.
+concurrency:
+  group: deploy-oracle
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Secrets live in the "production" environment. Add required reviewers
+    # there if you want to approve each deploy by hand.
+    environment:
+      name: production
+      url: ${{ vars.PUBLIC_URL }}
+    env:
+      ORACLE_HOST: ${{ vars.ORACLE_HOST }}
+      ORACLE_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+
+    steps:
+      - name: Check deploy settings
+        run: |
+          missing=0
+          [ -n "$ORACLE_HOST" ] || { echo "::error::Set the ORACLE_HOST variable in the production environment"; missing=1; }
+          [ -n "${{ secrets.ORACLE_SSH_KEY != '' && 'ok' || '' }}" ] || { echo "::error::Add the ORACLE_SSH_KEY secret to the production environment"; missing=1; }
+          [ -n "${{ secrets.ORACLE_KNOWN_HOSTS != '' && 'ok' || '' }}" ] || { echo "::error::Add the ORACLE_KNOWN_HOSTS secret to the production environment"; missing=1; }
+          exit $missing
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Every gate below must pass before anything is sent to the VM.
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Security audit (shipped dependencies)
+        run: node .github/scripts/audit-shipped.mjs
+
+      - name: Server tests (security + gameplay)
+        run: pnpm --filter @workspace/api-server run test
+
+      - name: Build release tarball
+        run: bash deploy/oracle/pack-release.sh
+
+      - name: Smoke-test the release
+        run: bash deploy/oracle/smoke-test-release.sh
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.ORACLE_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/oracle_deploy
+          chmod 600 ~/.ssh/oracle_deploy
+          # Pinned host key: the job refuses to talk to anything pretending to be the VM.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Upload release to the VM
+        run: |
+          scp -i ~/.ssh/oracle_deploy -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            deploy/oracle/mafia-wars-release.tar deploy/oracle/remote-update.sh \
+            "$ORACLE_USER@$ORACLE_HOST:/tmp/"
+
+      # remote-update.sh keeps the previous version and rolls back by itself if
+      # the new one doesn't come up healthy, so a bad release never stays live.
+      - name: Install and restart on the VM
+        run: |
+          ssh -i ~/.ssh/oracle_deploy -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$ORACLE_USER@$ORACLE_HOST" "bash /tmp/remote-update.sh"
+
+      - name: Check the public site
+        if: vars.PUBLIC_URL != ''
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+        run: |
+          url="${PUBLIC_URL%/}/api/healthz"
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 10 "$url"; then echo; echo "OK: $url"; exit 0; fi
+            echo "Not ready yet (attempt $i), retrying in 10s…"; sleep 10
+          done
+          echo "::error::$url did not respond after deploy"
+          exit 1
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/oracle_deploy

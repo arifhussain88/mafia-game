@@ -5,14 +5,14 @@ Build the current plan, then the next one. Do not start a later plan early.
 ## Production
 
 - **Live host:** Oracle Always Free VM — **http://141.148.204.30/** (HTTP; HTTPS when you add a domain)
-- **Live / production git branch:** `feature/done-live`
-- Do feature work on other branches. When you say a piece of work is **done**, merge that branch into `feature/done-live`, then deploy that tip to the Oracle VM.
+- **Live / production git branch:** `main`. GitHub Actions deploys every push or merged PR to Oracle (`.github/workflows/deploy-oracle.yml`)
+- Do feature work on other branches. When you say a piece of work is **done**, open a PR into `main`; CI must pass, and merging deploys it to the Oracle VM.
 - Deploy to **Oracle only**. Do not recreate or use Fly as a live host.
 - **Former Fly app `mafia-wars`:** destroyed — not in use; do not bring Fly back for production unless you explicitly reverse this decision
 
 ## Now
 
-- [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — implemented locally (host timers, 3D cards, detective Mafia flip). Mark done and merge into `feature/done-live` when you say so; deploy to Oracle from that branch
+- [ ] [Finalizing UI](file:///C:/Users/ArifH/.cursor/plans/finalizing_ui_7c4e1a90.plan.md) — implemented locally (host timers, 3D cards, detective Mafia flip). Mark done and merge into `main` via PR when you say so (that deploys it)
 - [x] [Go live readiness](file:///C:/Users/ArifH/.cursor/plans/go_live_readiness_1c287349.plan.md) — was on Fly; superseded by Oracle host above
 - [x] [Oracle Always Free cutover](file:///C:/Users/ArifH/.cursor/plans/oracle_always_free_cutover_385545c1.plan.md) — verified on Oracle; public play at http://141.148.204.30/; Fly app destroyed
 - [x] [Neon Free safe migrate](file:///C:/Users/ArifH/.cursor/plans/neon_free_safe_migrate_2400676a.plan.md) — Neon Free Postgres for accounts, profiles, match history, chat

@@ -12,6 +12,39 @@ if [[ ! -f "$TAR" ]]; then
   exit 1
 fi
 
+# Sanity-check the tarball before touching the live app.
+if ! tar -tf "$TAR" | grep -qx './index.mjs'; then
+  echo "Release tarball has no index.mjs; refusing to deploy." >&2
+  exit 1
+fi
+
+# Keep the running version so a bad release can be rolled back automatically.
+PREV=/opt/mafia-wars.prev
+sudo rm -rf "$PREV"
+if [[ -f /opt/mafia-wars/index.mjs ]]; then
+  sudo cp -a /opt/mafia-wars "$PREV"
+  sudo cp -a /etc/caddy/Caddyfile "$PREV/.Caddyfile.live" 2>/dev/null || true
+fi
+
+rollback() {
+  echo "!! New release is unhealthy - rolling back to the previous version" >&2
+  sudo journalctl -u mafia-wars -n 30 --no-pager >&2 || true
+  if [[ -d "$PREV" ]]; then
+    sudo systemctl stop mafia-wars || true
+    sudo rm -rf /opt/mafia-wars
+    sudo cp -a "$PREV" /opt/mafia-wars
+    if [[ -f /opt/mafia-wars/.Caddyfile.live ]]; then
+      sudo cp /opt/mafia-wars/.Caddyfile.live /etc/caddy/Caddyfile
+      sudo systemctl reload caddy || sudo systemctl restart caddy || true
+    fi
+    sudo systemctl start mafia-wars
+    echo "Rolled back. The previous version is serving again." >&2
+  else
+    echo "No previous version to roll back to." >&2
+  fi
+  exit 1
+}
+
 echo "==> Stopping mafia-wars"
 sudo systemctl stop mafia-wars
 
@@ -49,7 +82,14 @@ fi
 
 echo "==> Starting mafia-wars"
 sudo systemctl start mafia-wars
-sleep 2
+
+echo "==> Waiting for the app to report healthy"
+healthy=0
+for _ in $(seq 1 30); do
+  if curl -fsS --max-time 3 http://127.0.0.1:8080/api/healthz >/dev/null 2>&1; then healthy=1; break; fi
+  sleep 1
+done
+[[ "$healthy" == 1 ]] || rollback
 sudo systemctl --no-pager --full status mafia-wars || true
 curl -sS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8080/ || true
 curl -sS -o /dev/null -w "HTTP80 %{http_code}\n" http://127.0.0.1/ || true
@@ -58,12 +98,12 @@ if [[ -f /etc/mafia-wars.env ]]; then
   echo "==> Neon checks (/etc/mafia-wars.env present)"
   if ! grep -q 'EnvironmentFile=.*mafia-wars.env' /etc/systemd/system/mafia-wars.service; then
     echo "FAIL: systemd unit missing EnvironmentFile for mafia-wars.env" >&2
-    exit 1
+    rollback
   fi
   MARKER=$(grep -c 'DbUnavailableError' /opt/mafia-wars/index.mjs || true)
   if [[ "$MARKER" -lt 1 ]]; then
     echo "FAIL: index.mjs lacks Neon marker DbUnavailableError (old binary?)" >&2
-    exit 1
+    rollback
   fi
   ListenPID=$(sudo ss -lptn 'sport = :8080' | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)
   ENV_COUNT=0
@@ -72,13 +112,13 @@ if [[ -f /etc/mafia-wars.env ]]; then
   fi
   if [[ "$ENV_COUNT" -lt 1 ]]; then
     echo "FAIL: listener PID missing DATABASE_URL in environ" >&2
-    exit 1
+    rollback
   fi
   JOURNAL=$(sudo journalctl -u mafia-wars -n 40 --no-pager || true)
   if ! echo "$JOURNAL" | grep -q '"authStore":"neon"'; then
     echo "FAIL: journal does not show authStore neon" >&2
     echo "$JOURNAL" | tail -n 20 >&2 || true
-    exit 1
+    rollback
   fi
   echo "OK: neon_marker=$MARKER env_on_listener=$ENV_COUNT authStore=neon"
 fi
