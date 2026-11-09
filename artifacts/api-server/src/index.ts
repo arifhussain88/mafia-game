@@ -45,6 +45,13 @@ process.on("uncaughtException", (err) => {
 const host =
   process.env.HOST?.trim() || (process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0");
 
+// Startup failures (e.g. port already in use) must still exit so systemd or
+// the developer sees it, instead of a process that lingers serving nothing.
+httpServer.on("error", (err) => {
+  logger.fatal({ err, port, host }, "HTTP server failed to start");
+  process.exit(1);
+});
+
 httpServer.listen(port, host, () => {
   const authStore = hasDatabaseUrl() ? "neon" : "json";
   logger.info({ port, host, authStore }, "Server listening");
