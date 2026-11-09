@@ -8,16 +8,17 @@ import MatchCountdown from "@/pages/MatchCountdown";
 import RoleReveal from "@/pages/RoleReveal";
 import NightPhase from "@/pages/NightPhase";
 import NightSummary from "@/pages/NightSummary";
-import EliminationReveal from "@/pages/EliminationReveal";
+import EliminationReveal, { type VoteTallyEntry } from "@/pages/EliminationReveal";
 import DayPhase from "@/pages/DayPhase";
 import GameOver from "@/pages/GameOver";
 import MuteToggle from "@/components/MuteToggle";
 import Atmosphere from "@/components/Atmosphere";
 import LeaveMatchButton from "@/components/LeaveMatchButton";
 import MatchTicker from "@/components/MatchTicker";
-import RoomChat from "@/components/RoomChat";
+import RoomChat, { type ChatMode, type ChatMessage } from "@/components/RoomChat";
 import { useBackHandler } from "@/lib/native-bridge";
-import { playNightSting, playDayChime, playMafiaKill, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
+import { clearInviteCode } from "@/lib/invite";
+import { playNightSting, playDayChime, playTargetLocked, preloadGunshot, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
 
@@ -50,6 +51,9 @@ function isActiveMatchPhase(phase: GamePhase): boolean {
 
 export type Winner = "mafia" | "civilians" | "draw";
 
+/** Who the Mafia hit last night, so the report fires its gunshot on the right word. */
+export type NightShot = { attacked: boolean; victimName: string | null };
+
 /** Remembered so a reconnect or page reload can put us back in our seat. */
 const ROOM_KEY = "mafia-room";
 function saveRoom(code: string) {
@@ -77,7 +81,8 @@ type RejoinSnapshot = {
   dayVotes: Record<string, number>;
   narration: string | null;
   nightSummaryLines: string[];
-  dayResult: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean } | null;
+  nightShot?: NightShot | null;
+  dayResult: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; tally?: VoteTallyEntry[] } | null;
   detectiveResult: { targetName: string; isMafia: boolean } | null;
   winner: Winner | null;
 };
@@ -112,7 +117,7 @@ export default function App() {
 
   const [dayVotes, setDayVotes] = useState<Record<string, number>>({});
   const [myDayVote, setMyDayVote] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<{ id: string; name: string; text: string }[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const blockedNamesRef = useRef<Set<string>>(new Set());
 
   const [dayNarration, setDayNarration] = useState<string | null>(null);
@@ -122,8 +127,10 @@ export default function App() {
   } | null>(null);
 
   const [nightSummaryLines, setNightSummaryLines] = useState<string[]>([]);
+  const [nightShot, setNightShot] = useState<NightShot | null>(null);
 
   const [elimInfo, setElimInfo] = useState<{
+    tally: VoteTallyEntry[];
     name: string | null;
     skipped?: boolean;
     phase: "day-result";
@@ -217,6 +224,7 @@ export default function App() {
     const ambientActive = phase === "home" || phase === "lobby" || phase === "game-over";
     if (ambientActive && !isMuted()) {
       unlockAudio();
+    preloadGunshot();
       startAmbientLoop();
     } else {
       stopAmbientLoop();
@@ -227,6 +235,7 @@ export default function App() {
       const shouldStart = ambientActive && !detail;
       if (shouldStart) {
         unlockAudio();
+    preloadGunshot();
         startAmbientLoop();
       } else stopAmbientLoop();
     }
@@ -241,6 +250,7 @@ export default function App() {
 
     function unlockOnGesture() {
       unlockAudio();
+    preloadGunshot();
       if (!isMuted()) startAmbientLoop();
     }
 
@@ -296,14 +306,31 @@ export default function App() {
       if (code) socket.emit("rejoin-room", { code });
     });
 
+    const signOutLocally = () => {
+      try {
+        localStorage.removeItem("mafia-token");
+        localStorage.removeItem("mafia-user");
+      } catch {}
+      forgetRoom();
+      setIsAuthenticated(false);
+      setPhase("home");
+    };
+    const SUSPENDED = "This account is suspended for breaking the community rules. To appeal, email sayedarif.dev@proton.me.";
+
+    socket.on("account-suspended", (data: { message?: string }) => {
+      signOutLocally();
+      toast({ title: "Account suspended", description: data?.message ?? SUSPENDED, variant: "destructive" });
+    });
+
     socket.on("connect_error", (err) => {
+      if (/suspended/i.test(err.message)) {
+        signOutLocally();
+        socket.disconnect();
+        toast({ title: "Account suspended", description: SUSPENDED, variant: "destructive" });
+        return;
+      }
       if (err.message === "Unauthorized" || /unauthorized/i.test(err.message)) {
-        try {
-          localStorage.removeItem("mafia-token");
-          localStorage.removeItem("mafia-user");
-        } catch {}
-        setIsAuthenticated(false);
-        setPhase("home");
+        signOutLocally();
         toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
         return;
       }
@@ -337,6 +364,7 @@ export default function App() {
 
     socket.on("room-joined", (data: { code: string; players: Player[]; isHost: boolean; timerSettings?: TimerSettings }) => {
       saveRoom(data.code);
+      clearInviteCode();
       setRoomCode(data.code);
       setPlayers(data.players);
       setIsHost(data.isHost);
@@ -410,9 +438,10 @@ export default function App() {
       setDayVotes(data.dayVotes ?? {});
       setDayNarration(data.narration);
       setNightSummaryLines(data.nightSummaryLines ?? []);
+      setNightShot(data.nightShot ?? null);
       setDetectiveResult(data.detectiveResult);
       if (data.dayResult) {
-        setElimInfo({ name: data.dayResult.eliminatedName, skipped: data.dayResult.skipped, phase: "day-result" });
+        setElimInfo({ name: data.dayResult.eliminatedName, skipped: data.dayResult.skipped, tally: data.dayResult.tally ?? [], phase: "day-result" });
       }
       if (data.winner) {
         setWinner(data.winner);
@@ -442,27 +471,24 @@ export default function App() {
 
     socket.on(
       "night-summary",
-      (data: { lines: string[]; eliminatedId: string | null; players: Player[] }) => {
+      (data: { lines: string[]; eliminatedId: string | null; attacked?: boolean; victimName?: string | null; players: Player[] }) => {
         setNightSummaryLines(data.lines);
+        setNightShot({ attacked: Boolean(data.attacked), victimName: data.victimName ?? null });
         setPlayers(data.players);
         setPhase("night-summary");
       },
     );
 
-    socket.on("mafia-kill-sound", () => {
-      playMafiaKill();
-    });
-
     socket.on("day-vote-update", (data: { votes: Record<string, number> }) => {
       setDayVotes(data.votes);
     });
 
-    socket.on("chat-message", (data: { id: string; name: string; text: string }) => {
+    socket.on("chat-message", (data: ChatMessage) => {
       if (blockedNamesRef.current.has(data.name)) return;
       setChatMessages((current) => [...current, data]);
     });
 
-    socket.on("chat-history", (data: { messages: { id: string; name: string; text: string }[] }) => {
+    socket.on("chat-history", (data: { messages: ChatMessage[] }) => {
       const blocked = blockedNamesRef.current;
       setChatMessages((data.messages ?? []).filter((m) => !blocked.has(m.name)));
     });
@@ -481,10 +507,10 @@ export default function App() {
 
     socket.on(
       "day-result",
-      (data: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; players: Player[] }) => {
+      (data: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; tally?: VoteTallyEntry[]; players: Player[] }) => {
         setPhase("day-result");
         setPlayers(data.players);
-        setElimInfo({ name: data.eliminatedName, skipped: data.skipped, phase: "day-result" });
+        setElimInfo({ name: data.eliminatedName, skipped: data.skipped, tally: data.tally ?? [], phase: "day-result" });
       },
     );
 
@@ -508,23 +534,33 @@ export default function App() {
 
   const createRoom = useCallback((name: string) => {
     unlockAudio();
+    preloadGunshot();
     setMyName(name);
     socketRef.current?.emit("create-room", { name });
   }, []);
 
   const joinRoom = useCallback((code: string, name: string) => {
     unlockAudio();
+    preloadGunshot();
     setMyName(name);
     socketRef.current?.emit("join-room", { code, name });
   }, []);
 
   const startGame           = useCallback(() => { socketRef.current?.emit("start-game"); }, []);
   const kickPlayer          = useCallback((id: string) => { socketRef.current?.emit("kick-player", { targetId: id }); }, []);
+  const reportPlayer        = useCallback((id: string, reason: string) => {
+    socketRef.current?.emit("report-player", { targetId: id, reason });
+    toast({ title: "Report sent", description: "Thanks. We review every report." });
+  }, [toast]);
   const updateTimerSettings = useCallback((next: TimerSettings) => {
     setTimerSettings(next);
     socketRef.current?.emit("set-timer-settings", next);
   }, []);
-  const castNightVote       = useCallback((id: string) => { setMyNightVote(id); socketRef.current?.emit("night-vote", { targetId: id }); }, []);
+  const castNightVote       = useCallback((id: string) => {
+    setMyNightVote(id);
+    playTargetLocked();
+    socketRef.current?.emit("night-vote", { targetId: id });
+  }, []);
   const castDoctorProtect   = useCallback((id: string) => { socketRef.current?.emit("doctor-protect", { targetId: id }); }, []);
   const castDetectiveInvest = useCallback((id: string) => { socketRef.current?.emit("detective-investigate", { targetId: id }); }, []);
   const castDayVote = useCallback((id: string) => {
@@ -563,16 +599,30 @@ export default function App() {
 
   const isNightPhase = phase === "night-mafia" || phase === "night-doctor" || phase === "night-detective";
 
+  // Mirrors the server's chat channels: town by day, Mafia-only at night, ghosts for the dead.
+  const amAlive = players.find((p) => p.id === mySocketId)?.alive ?? true;
+  const chatMode: ChatMode =
+    phase === "lobby" || phase === "game-over"
+      ? "town"
+      : !amAlive
+        ? "ghost"
+        : isNightPhase || phase === "night-summary"
+          ? myRole === "mafia" ? "mafia" : "locked"
+          : "town";
+
   return (
     <div className="game-shell min-h-screen text-gray-100 relative z-0">
       <Atmosphere phase={phase} />
       {phase === "home" && (
         <Home
+          // Remount on sign-in/out so Home re-reads the stored user (e.g. after a suspension).
+          key={isAuthenticated ? "signed-in" : "signed-out"}
           onCreateRoom={createRoom}
           onJoinRoom={joinRoom}
           onAuthenticated={() => {
             setIsAuthenticated(true);
             unlockAudio();
+    preloadGunshot();
             if (!isMuted()) startAmbientLoop();
           }}
           onLogout={() => {
@@ -591,6 +641,7 @@ export default function App() {
           timerSettings={timerSettings}
           onStartGame={startGame}
           onKickPlayer={kickPlayer}
+          onReportPlayer={reportPlayer}
           onTimerSettingsChange={updateTimerSettings}
         />
       )}
@@ -623,13 +674,14 @@ export default function App() {
       )}
 
       {phase === "night-summary" && (
-        <NightSummary lines={nightSummaryLines} />
+        <NightSummary lines={nightSummaryLines} shot={nightShot} />
       )}
 
       {phase === "day-result" && elimInfo && (
         <EliminationReveal
           eliminatedName={elimInfo.name}
           skipped={elimInfo.skipped}
+          tally={elimInfo.tally}
         />
       )}
 
@@ -666,11 +718,7 @@ export default function App() {
         <RoomChat
           myName={myName}
           messages={chatMessages}
-          canSend={
-            phase === "lobby" ||
-            phase === "game-over" ||
-            (players.find((p) => p.id === mySocketId)?.alive ?? true)
-          }
+          mode={chatMode}
           onSend={sendChat}
           onReport={reportChat}
           onBlock={blockPlayer}

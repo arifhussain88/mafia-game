@@ -6,7 +6,7 @@ import {
   matchPlayersTable,
   matchesTable,
 } from "@workspace/db";
-import { bumpProfileAfterMatch } from "./user-store";
+import { bumpProfileAfterMatch, readStore, writeStore, type StoredMatch } from "./user-store";
 import { logger } from "./logger";
 
 type PersistPlayer = {
@@ -14,6 +14,11 @@ type PersistPlayer = {
   name: string;
   role: string | null;
   alive: boolean;
+  /** "survived", "killed night 2", "voted out day 3", "left the match". */
+  outcome?: string;
+  saves?: number;
+  mafiaFound?: number;
+  kills?: number;
 };
 
 /** Emit already happened — never await this on the hot path. */
@@ -42,6 +47,14 @@ export function persistChatMessage(input: {
   })();
 }
 
+function didWin(winner: "mafia" | "civilians" | "draw", role: string | null): boolean {
+  const isMafia = role === "mafia";
+  return (winner === "mafia" && isMafia) || (winner === "civilians" && !isMafia);
+}
+
+/** JSON store (local dev / tests) keeps the most recent matches only. */
+const JSON_MATCH_LIMIT = 500;
+
 /** Emit already happened — never await this on the hot path. */
 export function persistMatchEnd(input: {
   roomCode: string;
@@ -49,36 +62,39 @@ export function persistMatchEnd(input: {
   winner: "mafia" | "civilians" | "draw";
   players: PersistPlayer[];
 }) {
-  if (!hasDatabaseUrl()) return;
+  const matchId = crypto.randomUUID();
+  const endedAt = new Date();
+  const rows = input.players.map((p) => ({
+    id: crypto.randomUUID(),
+    matchId,
+    userId: p.userId ?? null,
+    name: p.name,
+    role: p.role,
+    alive: p.alive,
+    won: didWin(input.winner, p.role),
+    outcome: p.outcome ?? (p.alive ? "survived" : null),
+    saves: p.saves ?? 0,
+    mafiaFound: p.mafiaFound ?? 0,
+    kills: p.kills ?? 0,
+  }));
+
+  if (!hasDatabaseUrl()) {
+    try {
+      const store = readStore();
+      const match: StoredMatch = { id: matchId, roomCode: input.roomCode, winner: input.winner, endedAt: endedAt.toISOString(), players: rows };
+      store.matches = [...(store.matches ?? []), match].slice(-JSON_MATCH_LIMIT);
+      writeStore(store);
+    } catch (err) {
+      logger.warn({ err, roomCode: input.roomCode }, "Failed to save match (JSON store)");
+    }
+    return;
+  }
+
   void (async () => {
     try {
       const db = getDb();
-      const matchId = crypto.randomUUID();
-      await db.insert(matchesTable).values({
-        id: matchId,
-        roomCode: input.roomCode,
-        winner: input.winner,
-        endedAt: new Date(),
-      });
-
-      const rows = input.players.map((p) => {
-        const isMafia = p.role === "mafia";
-        const won =
-          (input.winner === "mafia" && isMafia) ||
-          (input.winner === "civilians" && !isMafia);
-        return {
-          id: crypto.randomUUID(),
-          matchId,
-          userId: p.userId ?? null,
-          name: p.name,
-          role: p.role,
-          alive: p.alive,
-          won,
-        };
-      });
-      if (rows.length > 0) {
-        await db.insert(matchPlayersTable).values(rows);
-      }
+      await db.insert(matchesTable).values({ id: matchId, roomCode: input.roomCode, winner: input.winner, endedAt });
+      if (rows.length > 0) await db.insert(matchPlayersTable).values(rows);
 
       for (const row of rows) {
         if (!row.userId) continue;

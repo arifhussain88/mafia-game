@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 export const matchesTable = pgTable("matches", {
@@ -18,6 +18,11 @@ export const matchPlayersTable = pgTable("match_players", {
   role: text("role"),
   alive: boolean("alive").notNull().default(true),
   won: boolean("won").notNull().default(false),
+  /** Short story for the profile: "survived", "killed night 2", "voted out day 3". */
+  outcome: text("outcome"),
+  saves: integer("saves").notNull().default(0),
+  mafiaFound: integer("mafia_found").notNull().default(0),
+  kills: integer("kills").notNull().default(0),
 });
 
 export type Match = typeof matchesTable.$inferSelect;

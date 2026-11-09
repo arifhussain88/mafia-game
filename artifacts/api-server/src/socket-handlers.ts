@@ -2,6 +2,8 @@ import { Server, Socket } from "socket.io";
 import { persistChatMessage, persistMatchEnd } from "./lib/game-persist";
 import { logger } from "./lib/logger";
 import { DbUnavailableError, getUserForToken } from "./lib/user-store";
+import { normaliseReason, saveReport } from "./lib/moderation";
+import { containsProfanity, maskProfanity } from "./lib/profanity";
 
 
 const TIMERS = {
@@ -13,7 +15,8 @@ const TIMERS = {
   DETECTIVE_REVEAL_PAUSE: 2800,
   DAY_DISCUSSION: 60000,
   DAY_VOTE: 30000,
-  DAY_RESULT: 5000,
+  /** Long enough to read the vote tally. */
+  DAY_RESULT: 7000,
   /** Delay before an intentional leave becomes a permanent forfeit. */
   FORFEIT_GRACE: 15000,
 };
@@ -89,7 +92,10 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
-const MIN_PLAYERS = 3;
+/** 4+ so every table has at least one plain civilian alongside Mafia, Doctor and Detective. */
+const MIN_PLAYERS = 4;
+/** A day vote can be spent on "skip" instead of a player. */
+const SKIP_VOTE = "skip";
 const MAX_PLAYERS_PER_ROOM = 12;
 /**
  * Capacity guards for the Oracle Always Free VM. Load scales with *concurrent*
@@ -149,10 +155,42 @@ interface Player {
   role: Role | null;
 }
 
+/**
+ * town: everyone (lobby, day, game over). mafia: living Mafia at night.
+ * ghost: eliminated players, any time; only the dead (and everyone after the game) see it.
+ */
+type ChatChannel = "town" | "mafia" | "ghost";
+
 interface ChatMessage {
   id: string;
   name: string;
   text: string;
+  channel: ChatChannel;
+}
+
+function isNightPhase(phase: Phase): boolean {
+  return phase === "night-mafia" || phase === "night-doctor" || phase === "night-detective" || phase === "night-summary";
+}
+
+/** Which channel this player's message goes to right now, or why they can't talk. */
+function chatChannelFor(room: Room, player: Player): ChatChannel | { error: string } {
+  if (room.phase === "lobby" || room.phase === "game-over") return "town";
+  if (!player.alive) return "ghost";
+  if (isNightPhase(room.phase)) {
+    return player.role === "mafia" ? "mafia" : { error: "The town is asleep. Only the Mafia can talk at night." };
+  }
+  return "town";
+}
+
+function canSeeChat(room: Room, viewer: Player, message: ChatMessage): boolean {
+  if (message.channel === "town" || room.phase === "game-over") return true;
+  if (message.channel === "mafia") return viewer.role === "mafia";
+  return !viewer.alive;
+}
+
+/** Chat history this player is allowed to see (rejoin snapshot). */
+function visibleChat(room: Room, viewer: Player): ChatMessage[] {
+  return room.chatMessages.filter((m) => canSeeChat(room, viewer, m));
 }
 
 interface Room {
@@ -167,7 +205,8 @@ interface Room {
   timerEndsAt: number;
   pendingNarration: string;
   chatMessages: ChatMessage[];
-  chatReports: ChatMessage[];
+  /** Author account per chat message id. Kept server-side only, for reports. */
+  chatAuthors: Map<string, string | undefined>;
   chatSeq: number;
   lastChatAt: Map<string, number>;
   emptySince?: number;
@@ -180,11 +219,33 @@ interface Room {
   /** Snapshot pieces so a rejoining player sees what everyone else sees. */
   dayNarration: string;
   nightSummaryLines: string[];
-  lastDayResult: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean } | null;
+  nightShot: { attacked: boolean; victimName: string | null } | null;
+  lastDayResult: {
+    eliminatedId: string | null;
+    eliminatedName: string | null;
+    skipped: boolean;
+    tally: { voter: string; target: string | null }[];
+  } | null;
   detectiveResult: { detectiveId: string; targetName: string; isMafia: boolean } | null;
   winner: Winner | null;
   nightHadDeath: boolean;
   quietRounds: number;
+  /** 1-based night/day number, for "killed night 2" style match stories. */
+  round: number;
+  /** What happened to each seat this match (keyed by seatKey), saved with the result. */
+  matchLog: Map<string, SeatLog>;
+}
+
+type SeatLog = { fate?: string; saves: number; mafiaFound: number; kills: number };
+
+function logFor(room: Room, p: Player): SeatLog {
+  const key = seatKey(p);
+  let entry = room.matchLog.get(key);
+  if (!entry) {
+    entry = { saves: 0, mafiaFound: 0, kills: 0 };
+    room.matchLog.set(key, entry);
+  }
+  return entry;
 }
 
 function seatKey(p: Player): string {
@@ -302,6 +363,7 @@ function assignRoles(room: Room) {
 
 function clearDayChat(room: Room) {
   room.chatMessages = [];
+  room.chatAuthors = new Map();
   room.lastChatAt = new Map();
 }
 
@@ -436,6 +498,7 @@ function applyForfeit(io: Server, code: string, playerId: string) {
   player.isHost = false;
   clearPlayerActions(room, playerId);
   room.forfeited.add(seatKey(player));
+  logFor(room, player).fate ??= "left the match";
 
   if (wasHost) transferHost(room);
 
@@ -464,6 +527,7 @@ function applyForfeit(io: Server, code: string, playerId: string) {
 
 function emitChatMessage(io: Server, room: Room, message: ChatMessage) {
   for (const player of room.players.values()) {
+    if (!canSeeChat(room, player, message)) continue;
     const target = io.sockets.sockets.get(player.id);
     if (!target) continue;
     const blocked = target.data.blockedNames as Set<string> | undefined;
@@ -521,9 +585,12 @@ function startMatchCountdown(io: Server, code: string) {
   room.phase = "match-countdown";
   room.winner = null;
   room.quietRounds = 0;
+  room.round = 0;
+  room.matchLog = new Map();
   room.nightHadDeath = false;
   room.dayNarration = "";
   room.nightSummaryLines = [];
+  room.nightShot = null;
   room.lastDayResult = null;
   room.detectiveResult = null;
   const endsAt = Date.now() + TIMERS.MATCH_COUNTDOWN;
@@ -576,11 +643,13 @@ function startNightMafia(io: Server, code: string) {
 
   clearRoomTimer(room);
   room.phase = "night-mafia";
+  room.round += 1;
   room.nightVotes = new Map();
   room.doctorProtect = new Map();
   room.detectiveInvestigate = new Map();
   room.detectiveResult = null;
   room.nightSummaryLines = [];
+  room.nightShot = null;
 
   const connectedMafia = connectedLivingMafia(room);
   const duration = connectedMafia.length > 0 ? nightStepMs(room) : Math.floor(Math.random() * 3000) + 5000;
@@ -684,7 +753,14 @@ function resolveNight(io: Server, code: string) {
     if (target) {
       target.alive = false;
       eliminatedName = target.name;
+      logFor(room, target).fate = `killed night ${room.round}`;
+      for (const m of livingMafia(room)) logFor(room, m).kills += 1;
     }
+  }
+  if (wasProtected) {
+    const doctorId = Array.from(room.doctorProtect.keys())[0];
+    const doctor = doctorId ? room.players.get(doctorId) : undefined;
+    if (doctor) logFor(room, doctor).saves += 1;
   }
 
   // Store brief narration for day-discussion header
@@ -698,6 +774,9 @@ function resolveNight(io: Server, code: string) {
 
   const lines = buildNightSummaryLines(mafiaTargetId, eliminatedName, wasProtected);
   room.nightSummaryLines = lines;
+  // The client fires the gunshot on the exact character of the victim's name
+  // (or of "attacked" when the Doctor saved them), in sync with the typing.
+  room.nightShot = { attacked: mafiaTargetId !== null, victimName: eliminatedName };
   room.nightHadDeath = eliminatedName !== null;
 
   // Auto-advance to day after typewriter finishes + 3s pause
@@ -708,6 +787,8 @@ function resolveNight(io: Server, code: string) {
   io.to(code).emit("night-summary", {
     lines,
     eliminatedId,
+    attacked: mafiaTargetId !== null,
+    victimName: eliminatedName,
     players: serializePlayers(room.players),
   });
 
@@ -792,11 +873,20 @@ function resolveDay(io: Server, code: string) {
     .filter(([, c]) => c === maxVotes)
     .map(([id]) => id);
 
-  if (topTargets.length === 1 && maxVotes >= majority) {
+  if (topTargets.length === 1 && topTargets[0] !== SKIP_VOTE && maxVotes >= majority) {
     eliminatedId = topTargets[0];
   } else {
     skipped = true;
   }
+
+  // Public tally: every living voter and their choice (null = didn't vote).
+  const tally = living(room).map((voter) => {
+    const choice = room.dayVotes.get(voter.id);
+    return {
+      voter: voter.name,
+      target: choice === undefined ? null : choice === SKIP_VOTE ? SKIP_VOTE : room.players.get(choice)?.name ?? null,
+    };
+  });
 
   let eliminatedName: string | null = null;
 
@@ -805,11 +895,11 @@ function resolveDay(io: Server, code: string) {
     if (target) {
       target.alive = false;
       eliminatedName = target.name;
+      logFor(room, target).fate = `voted out day ${room.round}`;
     }
-    io.to(code).emit("mafia-kill-sound");
   }
 
-  room.lastDayResult = { eliminatedId, eliminatedName, skipped };
+  room.lastDayResult = { eliminatedId, eliminatedName, skipped, tally };
   // A full night + day with no death. If the table keeps stalling (idle
   // players, nobody votes) end it rather than looping forever.
   if (!eliminatedName && !room.nightHadDeath) room.quietRounds += 1;
@@ -819,6 +909,7 @@ function resolveDay(io: Server, code: string) {
     eliminatedId,
     eliminatedName,
     skipped,
+    tally,
     players: serializePlayers(room.players),
   });
 
@@ -851,12 +942,19 @@ function endGame(io: Server, code: string, winner: Winner) {
   persistMatchEnd({
     roomCode: code,
     winner,
-    players: Array.from(room.players.values()).map((p) => ({
-      userId: p.userId,
-      name: p.name,
-      role: p.role,
-      alive: p.alive,
-    })),
+    players: Array.from(room.players.values()).map((p) => {
+      const log = logFor(room, p);
+      return {
+        userId: p.userId,
+        name: p.name,
+        role: p.role,
+        alive: p.alive,
+        outcome: log.fate ?? "survived",
+        saves: log.saves,
+        mafiaFound: log.mafiaFound,
+        kills: log.kills,
+      };
+    }),
   });
 
   logger.info({ code, winner }, "Game over");
@@ -971,6 +1069,16 @@ function removeLobbySeat(io: Server, code: string, room: Room, seat: Player) {
  * Account deleted: forget the account on any live seat so match/chat saves
  * don't reference a removed user, and drop its sockets.
  */
+/** Cut every live connection of an account (e.g. after a ban), with a reason shown to the player. */
+export function disconnectUser(userId: string, message: string) {
+  if (!ioRef) return;
+  for (const s of ioRef.sockets.sockets.values()) {
+    if (s.data.userId !== userId) continue;
+    s.emit("account-suspended", { message });
+    s.disconnect(true);
+  }
+}
+
 export function forgetUser(userId: string) {
   for (const room of rooms.values()) {
     for (const p of room.players.values()) if (p.userId === userId) p.userId = undefined;
@@ -1001,6 +1109,7 @@ function sendRejoinSnapshot(io: Server, socket: Socket, code: string, room: Room
     dayVotes: dayVoteCounts(room),
     narration: room.dayNarration || null,
     nightSummaryLines: room.nightSummaryLines,
+    nightShot: room.nightShot,
     dayResult: room.phase === "day-result" ? room.lastDayResult : null,
     detectiveResult:
       isDetective && room.detectiveResult?.detectiveId === id
@@ -1023,7 +1132,7 @@ function sendRejoinSnapshot(io: Server, socket: Socket, code: string, room: Room
       total: connectedLivingMafia(room).length,
     });
   }
-  socket.emit("chat-history", { messages: room.chatMessages });
+  socket.emit("chat-history", { messages: visibleChat(room, seat) });
 }
 
 type RejoinResult = "ok" | "no-seat" | "left";
@@ -1148,7 +1257,7 @@ function newRoom(code: string, host: Player): Room {
     timerEndsAt: 0,
     pendingNarration: "",
     chatMessages: [],
-    chatReports: [],
+    chatAuthors: new Map(),
     chatSeq: 0,
     lastChatAt: new Map(),
     timerSettings: { ...DEFAULT_TIMER_SETTINGS },
@@ -1157,11 +1266,14 @@ function newRoom(code: string, host: Player): Room {
     lobbyGrace: new Map(),
     dayNarration: "",
     nightSummaryLines: [],
+    nightShot: null,
     lastDayResult: null,
     detectiveResult: null,
     winner: null,
     nightHadDeath: false,
     quietRounds: 0,
+    round: 0,
+    matchLog: new Map(),
   };
 }
 
@@ -1195,6 +1307,10 @@ export function registerSocketHandlers(io: Server) {
       const user = await getUserForToken(token);
       if (!user) {
         next(new Error("Unauthorized"));
+        return;
+      }
+      if (user.bannedAt) {
+        next(new Error("Account suspended"));
         return;
       }
       // Global cap protects the free VM. Players returning to a seat they hold
@@ -1242,6 +1358,7 @@ export function registerSocketHandlers(io: Server) {
       const name = str(data?.name) || str(socket.data.userName);
       if (!name) { socket.emit("room-error", { message: "Display name is required" }); return; }
       if (name.length > 24) { socket.emit("room-error", { message: "Display name must be 24 characters or fewer" }); return; }
+      if (containsProfanity(name)) { socket.emit("room-error", { message: "Please choose a different display name." }); return; }
       releaseStaleSeats(io, socket.data.userId);
       if (socketInAnyRoom(socket.id) || userHasActiveSeat(socket.data.userId)) {
         socket.emit("room-error", { message: ALREADY_SEATED });
@@ -1321,6 +1438,7 @@ export function registerSocketHandlers(io: Server) {
       }
 
       if (name.length > 24) { socket.emit("room-error", { message: "Display name must be 24 characters or fewer" }); return; }
+      if (containsProfanity(name)) { socket.emit("room-error", { message: "Please choose a different display name." }); return; }
       releaseStaleSeats(io, socket.data.userId);
       if (socketInAnyRoom(socket.id) || userHasActiveSeat(socket.data.userId)) {
         socket.emit("room-error", { message: ALREADY_SEATED });
@@ -1438,7 +1556,7 @@ export function registerSocketHandlers(io: Server) {
         room.pendingNarration = "";
         room.winner = null;
         clearDayChat(room);
-        room.chatReports = [];
+        room.chatAuthors = new Map();
         room.forfeited = new Set();
 
         for (const [id, p] of Array.from(room.players.entries())) {
@@ -1465,12 +1583,9 @@ export function registerSocketHandlers(io: Server) {
           socket.emit("room-error", { message: "Reconnect to send chat." });
           return;
         }
-        if (
-          room.phase !== "lobby" &&
-          room.phase !== "game-over" &&
-          !player.alive
-        ) {
-          socket.emit("room-error", { message: "Eliminated players can only watch chat." });
+        const channel = chatChannelFor(room, player);
+        if (typeof channel !== "string") {
+          socket.emit("room-error", { message: channel.error });
           return;
         }
         const text = str(data?.text);
@@ -1486,7 +1601,8 @@ export function registerSocketHandlers(io: Server) {
         }
         room.lastChatAt.set(player.id, now);
         room.chatSeq += 1;
-        const message: ChatMessage = { id: String(room.chatSeq), name: player.name, text };
+        const message: ChatMessage = { id: String(room.chatSeq), name: player.name, text: maskProfanity(text), channel };
+        room.chatAuthors.set(message.id, player.userId);
         room.chatMessages.push(message);
         emitChatMessage(io, room, message);
         persistChatMessage({
@@ -1529,8 +1645,46 @@ export function registerSocketHandlers(io: Server) {
       }
     });
 
-    on("report-chat", (data: { id?: string }) => {
-      for (const [, room] of rooms.entries()) {
+    /** At most 10 reports per connection per 10 minutes, so reports can't be used to spam. */
+    const reportTimes: number[] = [];
+    const reportAllowed = () => {
+      const now = Date.now();
+      while (reportTimes.length && now - reportTimes[0] > 10 * 60 * 1000) reportTimes.shift();
+      if (reportTimes.length >= 10) return false;
+      reportTimes.push(now);
+      return true;
+    };
+
+    const fileReport = (
+      code: string,
+      reporter: Player,
+      reported: { userId?: string; name: string },
+      reason: unknown,
+      message: string | null,
+    ) => {
+      if (!reportAllowed()) {
+        socket.emit("room-error", { message: "You've sent a lot of reports. Try again later." });
+        return;
+      }
+      saveReport({
+        reporterId: reporter.userId ?? null,
+        reporterName: reporter.name,
+        reportedId: reported.userId ?? null,
+        reportedName: reported.name,
+        roomCode: code,
+        reason: normaliseReason(reason),
+        message,
+      })
+        .then(() => socket.emit("report-received"))
+        .catch((err) => {
+          logger.error({ err, code }, "Failed to save report");
+          socket.emit("room-error", { message: "Couldn't send the report. Try again." });
+        });
+      logger.info({ code, reportedName: reported.name, reason: normaliseReason(reason) }, "Report filed");
+    };
+
+    on("report-chat", (data: { id?: unknown; reason?: unknown } | undefined) => {
+      for (const [code, room] of rooms.entries()) {
         const player = room.players.get(socket.id);
         if (!player) continue;
         const message = room.chatMessages.find((entry) => entry.id === String(data?.id ?? ""));
@@ -1538,10 +1692,20 @@ export function registerSocketHandlers(io: Server) {
           socket.emit("room-error", { message: "Message not found." });
           return;
         }
-        if (!room.chatReports.some((entry) => entry.id === message.id)) {
-          room.chatReports.push(message);
-        }
-        logger.info({ name: message.name, text: message.text, reportedBy: player.name }, "Chat reported");
+        fileReport(code, player, { userId: room.chatAuthors.get(message.id), name: message.name }, data?.reason ?? "harassment", message.text);
+        return;
+      }
+    });
+
+    on("report-player", (data: { targetId?: unknown; reason?: unknown } | undefined) => {
+      const targetId = targetIdOf(data);
+      if (!targetId) return;
+      for (const [code, room] of rooms.entries()) {
+        const player = room.players.get(socket.id);
+        if (!player) continue;
+        const target = room.players.get(targetId);
+        if (!target || target.id === socket.id) return;
+        fileReport(code, player, { userId: target.userId, name: target.name }, data?.reason, null);
         return;
       }
     });
@@ -1570,7 +1734,6 @@ export function registerSocketHandlers(io: Server) {
         if (!target || !target.alive || target.role === "mafia") return;
 
         room.nightVotes.set(socket.id, targetId);
-        io.to(code).emit("mafia-kill-sound");
         broadcastNightVoteStatus(io, code);
 
         // Advance early when all connected mafia have voted — 2s pause before next step
@@ -1628,6 +1791,7 @@ export function registerSocketHandlers(io: Server) {
         // Send investigation result immediately and privately
         const result = { targetName: target.name, isMafia: target.role === "mafia" };
         room.detectiveResult = { detectiveId: socket.id, ...result };
+        if (result.isMafia) logFor(room, detective).mafiaFound += 1;
         socket.emit("detective-result", result);
         logger.info({ code, isMafia: result.isMafia }, "Detective result sent");
 
@@ -1647,18 +1811,21 @@ export function registerSocketHandlers(io: Server) {
         if (room.phase !== "day-vote" || !voter.alive || targetId === socket.id) return;
         if (room.dayVotes.has(socket.id)) return;
 
-        const target = room.players.get(targetId);
-        if (!target || !target.alive) return;
+        if (targetId !== SKIP_VOTE) {
+          const target = room.players.get(targetId);
+          if (!target || !target.alive) return;
+        }
 
         room.dayVotes.set(socket.id, targetId);
 
         const voteCounts = dayVoteCounts(room);
         io.to(code).emit("day-vote-update", { votes: voteCounts });
 
+        // Resolve early on a majority (for a player or for skipping), or once every living player has voted.
         const livingCount = living(room).length;
         const majority = Math.floor(livingCount / 2) + 1;
         const maxVotes = Math.max(...Object.values(voteCounts));
-        if (maxVotes >= majority) resolveDay(io, code);
+        if (maxVotes >= majority || room.dayVotes.size >= livingCount) resolveDay(io, code);
         return;
       }
     });

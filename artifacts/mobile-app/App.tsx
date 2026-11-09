@@ -5,6 +5,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -29,7 +30,7 @@ const WebView = RNWebView<{}>;
 type WebViewRef = RNWebView<{}>;
 
 /**
- * Mafia Wars mobile shell.
+ * Mafia: Town Has a Problem: mobile shell.
  *
  * The game itself is the React web app served by the API server (artifacts/game-lobby).
  * This app loads it in a full-screen WebView so the same build runs in Expo Go for
@@ -92,8 +93,12 @@ export default function App() {
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     try {
-      const msg = JSON.parse(event.nativeEvent.data) as { type?: string };
+      const msg = JSON.parse(event.nativeEvent.data) as { type?: string; message?: string };
       if (msg.type === 'exit') BackHandler.exitApp();
+      // Invite friends: the system share sheet (WhatsApp, SMS, etc.). Nothing is sent unless the player picks an app.
+      if (msg.type === 'share' && typeof msg.message === 'string') {
+        void Share.share({ message: msg.message.slice(0, 500) }).catch(() => {});
+      }
     } catch {
       // Not ours; ignore.
     }
@@ -152,7 +157,7 @@ export default function App() {
             pullToRefreshEnabled={false}
             bounces={false}
             textZoom={100}
-            applicationNameForUserAgent="MafiaWarsApp/1.0"
+            applicationNameForUserAgent="MafiaTownApp/1.0"
             onShouldStartLoadWithRequest={onShouldStart}
             onMessage={onMessage}
             onLoadEnd={() => setLoading(false)}

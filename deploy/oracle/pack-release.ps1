@@ -27,6 +27,10 @@ if ($gameHost -and $gameHost -notmatch '^[A-Za-z0-9.-]+$') { throw "game-host mu
 $site = if ($gameHost) { $gameHost } else { ":80" }
 Write-Host "==> Caddy site: $site"
 $caddy = (Get-Content (Join-Path $PSScriptRoot "Caddyfile") -Raw).Replace("{{SITE}}", $site)
+if ($gameHost) {
+  # Old links to the bare IP (http://141.148.204.30/...) land on the HTTPS site.
+  $caddy += "`n:80 {`n`tredir https://$gameHost{uri} permanent`n}`n"
+}
 [System.IO.File]::WriteAllText((Join-Path $release "Caddyfile"), ($caddy -replace "`r`n", "`n"))
 
 $tar = Join-Path $PSScriptRoot "mafia-wars-release.tar"

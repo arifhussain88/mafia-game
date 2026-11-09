@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { scheduleKeyStrokes, type KeyStroke } from "@/lib/audio";
+import type { NightShot } from "@/App";
 
 type Props = {
   lines: string[];
+  /** Who the Mafia hit; the gunshot fires on that word as it is typed. */
+  shot?: NightShot | null;
 };
 
 /** Keep in sync with api-server TYPEWRITER_* constants. */
@@ -18,12 +21,32 @@ type LineTiming = { start: number; end: number };
  * beat after its last character, then LINE_PAUSE_MS before the next line.
  * This mirrors computeTypewriterDuration on the server.
  */
-function buildTimeline(lines: string[]) {
+/**
+ * Character (line, index of its last letter) where the gunshot lands: the end
+ * of the victim's name ("…find Marco dead"), or of "attacked" when the
+ * Doctor saved them. None on a peaceful night.
+ */
+function shotPosition(lines: string[], shot: NightShot | null | undefined): { line: number; char: number } | null {
+  if (!shot?.attacked) return null;
+  const word = shot.victimName ?? "attacked";
+  for (let i = 0; i < lines.length; i++) {
+    const at = lines[i].indexOf(word);
+    if (at >= 0) return { line: i, char: at + word.length - 1 };
+  }
+  return null;
+}
+
+function buildTimeline(lines: string[], shot?: NightShot | null) {
   const timings: LineTiming[] = [];
   const strokes: KeyStroke[] = [];
+  const shotAt = shotPosition(lines, shot);
   let t = START_DELAY_MS;
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
     const start = t;
+    if (shotAt?.line === index) {
+      // Same instant the name's last letter appears on screen.
+      strokes.push({ at: (start + shotAt.char * CHAR_DELAY_MS) / 1000, kind: "gunshot" });
+    }
     for (let k = 0; k < line.length; k++) {
       strokes.push({ at: (start + k * CHAR_DELAY_MS) / 1000, kind: /\s/.test(line[k]) ? "space" : "key" });
     }
@@ -35,8 +58,10 @@ function buildTimeline(lines: string[]) {
   return { timings, strokes, total: t };
 }
 
-export default function NightSummary({ lines }: Props) {
-  const timeline = useMemo(() => buildTimeline(lines), [lines]);
+export default function NightSummary({ lines, shot }: Props) {
+  // Keyed on the lines only: a late-arriving shot prop must not restart the typing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const timeline = useMemo(() => buildTimeline(lines, shot), [lines]);
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {

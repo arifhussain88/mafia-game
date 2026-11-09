@@ -113,7 +113,7 @@ export default function HowToPlay({ open, onOpenChange }: Props) {
               Before you play
             </h3>
             <ul className="list-disc pl-4 text-gray-300 space-y-1">
-              <li>Join a room. The host starts when enough players are ready (at least 3).</li>
+              <li>Join a room. The host starts when enough players are ready (at least 4). At night only the Mafia can chat; eliminated players get their own ghost chat.</li>
               <li>Keep your role secret.</li>
               <li>Be kind in chat — you can report or block anyone in room chat.</li>
             </ul>

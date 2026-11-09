@@ -1,4 +1,4 @@
-# Mafia Wars - Development Guide
+# Mafia: Town Has a Problem - Development Guide
 
 ## Tech Stack Summary
 React, Vite, Tailwind CSS, Node.js, Express, Socket.IO, pnpm workspaces.

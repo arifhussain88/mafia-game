@@ -44,11 +44,53 @@ export type StoredUser = {
   dob?: string;
   passwordHash: string;
   createdAt: string;
+  /** ISO time the account was suspended; absent when in good standing. */
+  bannedAt?: string;
+  banReason?: string;
+};
+
+export type StoredReport = {
+  id: string;
+  reporterId: string | null;
+  reporterName: string;
+  reportedId: string | null;
+  reportedName: string;
+  roomCode: string;
+  reason: string;
+  message: string | null;
+  status: string;
+  createdAt: string;
 };
 
 export type UserStore = {
   users: StoredUser[];
   sessions: Record<string, { userId: string; createdAt: string }>;
+  /** JSON-mode (local dev / tests) copy of the reports table. */
+  reports?: StoredReport[];
+  /** JSON-mode copy of finished matches (newest last). */
+  matches?: StoredMatch[];
+};
+
+export type StoredMatchPlayer = {
+  id: string;
+  matchId: string;
+  userId: string | null;
+  name: string;
+  role: string | null;
+  alive: boolean;
+  won: boolean;
+  outcome: string | null;
+  saves: number;
+  mafiaFound: number;
+  kills: number;
+};
+
+export type StoredMatch = {
+  id: string;
+  roomCode: string;
+  winner: string;
+  endedAt: string;
+  players: StoredMatchPlayer[];
 };
 
 export function usingDatabase() {
@@ -115,6 +157,8 @@ function rowToStoredUser(row: User): StoredUser {
     dob: row.dob ?? undefined,
     passwordHash: row.passwordHash,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+    bannedAt: row.bannedAt ? new Date(row.bannedAt).toISOString() : undefined,
+    banReason: row.banReason ?? undefined,
   };
 }
 
@@ -381,6 +425,9 @@ export async function deleteUserAccount(userId: string): Promise<void> {
   if (!usingDatabase()) {
     const store = readStore();
     store.users = store.users.filter((u) => u.id !== userId);
+    for (const m of store.matches ?? []) {
+      for (const p of m.players) if (p.userId === userId) { p.userId = null; p.name = "Deleted player"; }
+    }
     for (const [token, session] of Object.entries(store.sessions)) {
       if (session.userId === userId) delete store.sessions[token];
     }

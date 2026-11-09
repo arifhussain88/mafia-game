@@ -129,11 +129,20 @@ export default function DayPhase({
         )}
         {isVoting && amAlive && myDayVote && (
           <p className="text-amber-600 text-xs md:text-sm">
-            Vote cast — you cannot change it.
+            {myDayVote === "skip" ? "You voted to skip. You can't change it." : "Vote cast. You can't change it."}
           </p>
         )}
         {isVoting && amAlive && !myDayVote && (
-          <p className="text-gray-600 text-xs md:text-sm">Tap a player card to vote.</p>
+          <>
+            <p className="text-gray-600 text-xs md:text-sm">Tap a player card to vote, or skip if you're not sure.</p>
+            <button
+              type="button"
+              onClick={() => onDayVote("skip")}
+              className="mt-1 min-h-[44px] rounded-xl border border-gray-700 px-5 text-sm text-gray-300 hover:border-amber-600/50 hover:text-white cursor-pointer transition-colors"
+            >
+              Skip vote{dayVotes.skip ? ` (${dayVotes.skip})` : ""}
+            </button>
+          </>
         )}
         {!isVoting && (
           <p className="text-gray-700 text-xs md:text-sm">

@@ -21,7 +21,7 @@ Where the MVP stands for its first Play release. The Android app is the Expo pro
 ## Still to do before uploading
 
 1. **HTTPS.** Create a DuckDNS name, put it in `deploy/oracle/game-host`, and deploy. Then set `expo.extra.gameUrl` in `artifacts/mobile-app/app.json` to the `https://` URL. Full steps are in `deploy/oracle/DEPLOY_ORACLE.md` → "HTTPS on a free subdomain". Once the URL is HTTPS, cleartext switches off automatically.
-2. **Name and package ID.** Don't ship as "Mafia Wars": that's Zynga's game. Pick a name, then set `expo.name`, `slug`, `scheme` and `android.package` (for example `com.sayedarif.<name>`). **You can't change the package ID after the first upload.** Also update the web `<title>`, the Home heading, the legal pages and `applicationNameForUserAgent` in `App.tsx`.
+2. **Name and package ID.** Decided: store title "Mafia: Town Has a Problem", launcher label "Mafia Town", package `com.sayedarif.mafiatown` (set in `artifacts/mobile-app/app.json`). Search the exact title on the Play Store before the first upload; the package ID cannot change after it.
 3. **Icon and splash.** `artifacts/mobile-app/assets/` still holds Expo template images. Replace them: a 1024×1024 icon, adaptive foreground and background, and a monochrome icon. Add a `splash` block to `app.json`.
 4. **EAS project.** Run `pnpm dlx eas-cli init` in `artifacts/mobile-app`, which writes `extra.eas.projectId`. Either remove the `development` profile from `eas.json` or add `expo-dev-client`.
 5. **Production build.** Run `pnpm dlx eas-cli build -p android --profile production` to get an `.aab`. Turn on Play App Signing.
@@ -29,8 +29,8 @@ Where the MVP stands for its first Play release. The Android app is the Expo pro
 
 ## Play Console
 
-- Privacy policy URL: `https://<game-host>/privacy.html`
-- Account deletion URL: `https://<game-host>/delete-account.html`
+- Privacy policy URL: `https://mafiatown.duckdns.org/privacy.html`
+- Account deletion URL: `https://mafiatown.duckdns.org/delete-account.html`
 - Data safety form:
   - Collected: email, display name, date of birth, in-game chat, and match history.
   - Encrypted in transit: yes, once on HTTPS.

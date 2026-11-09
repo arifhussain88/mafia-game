@@ -33,6 +33,10 @@ fi
 SITE="${GAME_HOST:-:80}"
 echo "==> Caddy site: $SITE"
 sed "s|{{SITE}}|$SITE|g" "$HERE/Caddyfile" | tr -d '\r' > "$RELEASE/Caddyfile"
+if [[ -n "$GAME_HOST" ]]; then
+  # Old links to the bare IP (http://141.148.204.30/...) land on the HTTPS site.
+  printf '\n:80 {\n\tredir https://%s{uri} permanent\n}\n' "$GAME_HOST" >> "$RELEASE/Caddyfile"
+fi
 
 TAR="$HERE/mafia-wars-release.tar"
 rm -f "$TAR"

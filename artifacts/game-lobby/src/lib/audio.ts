@@ -162,7 +162,8 @@ export function playChatPing(): void {
 export type KeyStroke = {
   /** Seconds after the typing starts. */
   at: number;
-  kind: "key" | "space" | "enter";
+  /** "gunshot" marks the Mafia kill, placed on the same clock as the typing. */
+  kind: "key" | "space" | "enter" | "gunshot";
 };
 
 let noiseBuffer: AudioBuffer | null = null;
@@ -271,7 +272,8 @@ export function scheduleKeyStrokes(strokes: KeyStroke[], startedAt: number): () 
     for (const s of strokes) {
       const at = s.at - lag;
       if (at < -0.005) continue; // already shown on screen; don't play late
-      keyPress(ctx, master, now + Math.max(0, at), s.kind, nodes);
+      if (s.kind === "gunshot") playGunshotAt(ctx, now + Math.max(0, at), level, nodes);
+      else keyPress(ctx, master, now + Math.max(0, at), s.kind, nodes);
     }
   });
 
@@ -292,63 +294,209 @@ export function scheduleKeyStrokes(strokes: KeyStroke[], startedAt: number): () 
   return cancel;
 }
 
-/** Clear gunshot: bright crack + body thump. Synthesized. No sample file. */
-function playGunshot(ctx: AudioContext, now: number, level: number): void {
-  const len = Math.max(1, Math.floor(ctx.sampleRate * 0.12));
-  const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < len; i++) {
-    const t = i / len;
-    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 1.6);
-  }
-  const noise = ctx.createBufferSource();
-  noise.buffer = buffer;
-  const filter = ctx.createBiquadFilter();
-  filter.type = "bandpass";
-  filter.frequency.setValueAtTime(2200, now);
-  filter.frequency.exponentialRampToValueAtTime(420, now + 0.1);
-  filter.Q.setValueAtTime(0.7, now);
-  const env = ctx.createGain();
-  env.gain.setValueAtTime(0.0001, now);
-  env.gain.exponentialRampToValueAtTime(1.15 * level, now + 0.004);
-  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
-  noise.connect(filter);
-  filter.connect(env);
-  env.connect(ctx.destination);
-  noise.start(now);
-  noise.stop(now + 0.15);
+/* ---------------- Gunshot, vote-out impact, Mafia "target locked" ---------------- */
 
-  const crack = ctx.createOscillator();
-  const crackEnv = ctx.createGain();
-  crack.type = "square";
-  crack.frequency.setValueAtTime(180, now);
-  crack.frequency.exponentialRampToValueAtTime(55, now + 0.08);
-  crackEnv.gain.setValueAtTime(0.0001, now);
-  crackEnv.gain.exponentialRampToValueAtTime(0.55 * level, now + 0.003);
-  crackEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
-  crack.connect(crackEnv);
-  crackEnv.connect(ctx.destination);
-  crack.start(now);
-  crack.stop(now + 0.11);
+/**
+ * Optional recorded gunshot. Drop a CC0 / public-domain file at
+ * public/audio/gunshot.mp3 (record its source in public/audio/README.md) and
+ * it replaces the synthesized shot below; if it's missing, the synth plays.
+ */
+const GUNSHOT_URL = `${import.meta.env.BASE_URL}audio/gunshot.mp3`;
+let gunshotSample: AudioBuffer | null = null;
+let gunshotLoading = false;
 
-  const thump = ctx.createOscillator();
-  const thumpEnv = ctx.createGain();
-  thump.type = "sine";
-  thump.frequency.setValueAtTime(110, now);
-  thump.frequency.exponentialRampToValueAtTime(42, now + 0.18);
-  thumpEnv.gain.setValueAtTime(0.0001, now);
-  thumpEnv.gain.exponentialRampToValueAtTime(0.85 * level, now + 0.006);
-  thumpEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-  thump.connect(thumpEnv);
-  thumpEnv.connect(ctx.destination);
-  thump.start(now);
-  thump.stop(now + 0.24);
+/** Fetch + decode the optional sample once, ahead of time, so the shot never lags. */
+export function preloadGunshot(): void {
+  if (gunshotSample || gunshotLoading) return;
+  const ctx = getCtx();
+  if (!ctx) return;
+  gunshotLoading = true;
+  fetch(GUNSHOT_URL)
+    .then((res) => {
+      const type = res.headers.get("content-type") ?? "";
+      // The dev server and SPA fallback answer missing files with index.html.
+      if (!res.ok || type.includes("text/html")) throw new Error("no sample");
+      return res.arrayBuffer();
+    })
+    .then((data) => ctx.decodeAudioData(data))
+    .then((buffer) => { gunshotSample = buffer; })
+    .catch(() => { /* synth fallback */ })
+    .finally(() => { gunshotLoading = false; });
 }
 
-/** Copyright-free kill hit — always a clear gunshot. No third-party sample. */
+let reverbImpulse: AudioBuffer | null = null;
+/** A short "night street" echo: decaying stereo noise used as a convolution reverb. */
+function getReverb(ctx: AudioContext): AudioBuffer {
+  if (reverbImpulse && reverbImpulse.sampleRate === ctx.sampleRate) return reverbImpulse;
+  const seconds = 1.6;
+  const len = Math.floor(ctx.sampleRate * seconds);
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      // Fast early reflections, then a long soft tail.
+      const early = i < ctx.sampleRate * 0.04 ? 0.6 : 0;
+      d[i] = (Math.random() * 2 - 1) * (Math.pow(1 - t, 3.2) * 0.5 + early * (1 - t));
+    }
+  }
+  reverbImpulse = buf;
+  return buf;
+}
+
+function decayingNoise(ctx: AudioContext, seconds: number, shape: number): AudioBuffer {
+  const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, shape);
+  return buf;
+}
+
+/** Output chain for big hits: dry + reverb send, then a limiter so it's loud but never clips. */
+function hitBus(ctx: AudioContext, t: number, level: number, wet: number) {
+  const input = ctx.createGain();
+  input.gain.setValueAtTime(level, t);
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.setValueAtTime(-8, t);
+  limiter.knee.setValueAtTime(4, t);
+  limiter.ratio.setValueAtTime(12, t);
+  limiter.attack.setValueAtTime(0.001, t);
+  limiter.release.setValueAtTime(0.2, t);
+  const verb = ctx.createConvolver();
+  verb.buffer = getReverb(ctx);
+  const wetGain = ctx.createGain();
+  wetGain.gain.setValueAtTime(wet, t);
+  input.connect(limiter);
+  input.connect(verb);
+  verb.connect(wetGain);
+  wetGain.connect(limiter);
+  limiter.connect(ctx.destination);
+  return input;
+}
+
+/** Synthesized pistol shot: muzzle crack, chest-hitting boom, and a street echo. */
+function synthGunshot(ctx: AudioContext, t: number, out: AudioNode, nodes?: AudioScheduledSourceNode[]): void {
+  // 1. Crack: very short bright noise transient.
+  const crack = ctx.createBufferSource();
+  crack.buffer = decayingNoise(ctx, 0.05, 4);
+  const crackHp = ctx.createBiquadFilter();
+  crackHp.type = "highpass";
+  crackHp.frequency.setValueAtTime(1800, t);
+  const crackEnv = ctx.createGain();
+  crackEnv.gain.setValueAtTime(0.0001, t);
+  crackEnv.gain.exponentialRampToValueAtTime(1.4, t + 0.0008);
+  crackEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+  crack.connect(crackHp).connect(crackEnv).connect(out);
+  crack.start(t);
+
+  // 2. Blast: broadband noise swept down from bright to dull, with saturation for punch.
+  const blast = ctx.createBufferSource();
+  blast.buffer = decayingNoise(ctx, 0.35, 2.2);
+  const blastLp = ctx.createBiquadFilter();
+  blastLp.type = "lowpass";
+  blastLp.frequency.setValueAtTime(6500, t);
+  blastLp.frequency.exponentialRampToValueAtTime(380, t + 0.25);
+  const shaper = ctx.createWaveShaper();
+  const curve = new Float32Array(1024);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = Math.tanh(3 * x);
+  }
+  shaper.curve = curve;
+  const blastEnv = ctx.createGain();
+  blastEnv.gain.setValueAtTime(0.0001, t);
+  blastEnv.gain.exponentialRampToValueAtTime(1.0, t + 0.002);
+  blastEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+  blast.connect(blastLp).connect(shaper).connect(blastEnv).connect(out);
+  blast.start(t);
+
+  // 3. Boom: low sine thump with a pitch drop (the "felt" part).
+  const boom = ctx.createOscillator();
+  boom.type = "sine";
+  boom.frequency.setValueAtTime(150, t);
+  boom.frequency.exponentialRampToValueAtTime(38, t + 0.22);
+  const boomEnv = ctx.createGain();
+  boomEnv.gain.setValueAtTime(0.0001, t);
+  boomEnv.gain.exponentialRampToValueAtTime(1.1, t + 0.004);
+  boomEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  boom.connect(boomEnv).connect(out);
+  boom.start(t);
+  boom.stop(t + 0.32);
+  nodes?.push(crack, blast, boom);
+}
+
+/**
+ * Play a gunshot at `at` (AudioContext time; default now). Uses the recorded
+ * sample when present, otherwise the synth. Synthesized fallback is original
+ * work: no third-party audio.
+ */
+export function playGunshotAt(ctx: AudioContext, at: number, level: number, nodes?: AudioScheduledSourceNode[]): void {
+  const out = hitBus(ctx, at, 0.9 * level, gunshotSample ? 0.15 : 0.35);
+  if (gunshotSample) {
+    const src = ctx.createBufferSource();
+    src.buffer = gunshotSample;
+    src.connect(out);
+    src.start(at);
+    nodes?.push(src);
+    return;
+  }
+  synthGunshot(ctx, at, out, nodes);
+}
+
+/** Immediate gunshot (kept for any caller that just wants the bang now). */
 export function playMafiaKill(): void {
+  withAudio((ctx, now, level) => playGunshotAt(ctx, now, level));
+}
+
+/** Day vote-out: a deep, heavy impact — distinct from the Mafia's gunshot. */
+export function playVoteOutImpact(): void {
   withAudio((ctx, now, level) => {
-    playGunshot(ctx, now, level);
+    const out = hitBus(ctx, now, 0.8 * level, 0.45);
+    const thud = ctx.createOscillator();
+    thud.type = "sine";
+    thud.frequency.setValueAtTime(90, now);
+    thud.frequency.exponentialRampToValueAtTime(32, now + 0.6);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, now);
+    env.gain.exponentialRampToValueAtTime(1.2, now + 0.01);
+    env.gain.exponentialRampToValueAtTime(0.0001, now + 0.9);
+    thud.connect(env).connect(out);
+    thud.start(now);
+    thud.stop(now + 0.95);
+
+    const body = ctx.createBufferSource();
+    body.buffer = decayingNoise(ctx, 0.5, 2.5);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(900, now);
+    lp.frequency.exponentialRampToValueAtTime(120, now + 0.4);
+    const bodyEnv = ctx.createGain();
+    bodyEnv.gain.setValueAtTime(0.0001, now);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.7, now + 0.006);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+    body.connect(lp).connect(bodyEnv).connect(out);
+    body.start(now);
+  });
+}
+
+/** Mafia only, on their own device: a quiet metallic double click when a target is locked in. */
+export function playTargetLocked(): void {
+  withAudio((ctx, now, level) => {
+    [0, 0.07].forEach((offset, i) => {
+      const t = now + offset;
+      const src = ctx.createBufferSource();
+      src.buffer = decayingNoise(ctx, 0.03, 6);
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.setValueAtTime(i === 0 ? 3200 : 2400, t);
+      bp.Q.setValueAtTime(4, t);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.exponentialRampToValueAtTime(0.35 * level, t + 0.001);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + 0.025);
+      src.connect(bp).connect(env).connect(ctx.destination);
+      src.start(t);
+    });
   });
 }
 

@@ -4,6 +4,8 @@ import AuthCard from "@/components/auth/AuthCard";
 import { startAmbientLoop, stopAmbientLoop, unlockAudio } from "@/lib/audio";
 import { AuthError, clearSession, postAuth, saveSession, type AuthUser } from "@/lib/auth-api";
 import { requestAppExit, useBackHandler } from "@/lib/native-bridge";
+import { takeInviteCode } from "@/lib/invite";
+import { ProfileScreen, ProfileStrip, useProfile } from "@/components/profile/Profile";
 
 type Props = {
   onCreateRoom: (name: string) => void;
@@ -12,7 +14,7 @@ type Props = {
   onLogout?: () => void;
 };
 
-type View = "main" | "create" | "join";
+type View = "main" | "create" | "join" | "profile";
 
 const inputCls =
   "w-full min-h-[52px] px-4 rounded-xl bg-black/55 ring-1 ring-white/12 text-white placeholder-gray-600 text-base focus:outline-none focus:ring-2 focus:ring-amber-500/70 transition-shadow";
@@ -38,15 +40,19 @@ function readToken(): string | null {
 
 export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogout }: Props) {
   const [user, setUser] = useState<AuthUser | null>(readUser);
-  const [view, setView] = useState<View>("main");
+  // Opened from an invite link (/join/ABCDE): go straight to Join with the code filled in.
+  const [inviteCode] = useState(takeInviteCode);
+  const [view, setView] = useState<View>(() => (readUser() && inviteCode ? "join" : "main"));
   // Default the per-room name to the account name; players can still change it.
   const [name, setName] = useState(() => readUser()?.name ?? "");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(inviteCode ?? "");
   const [error, setError] = useState("");
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePass, setDeletePass] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // Refetch stats each time you come back to the main screen (e.g. after a match).
+  const profile = useProfile(user ? readToken() : null, `${user?.id}:${view === "main" || view === "profile"}`);
 
   // Android back: close the innermost open panel; on the root screen, exit the app.
   useBackHandler(() => {
@@ -61,6 +67,10 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
     setUser(next);
     setName(next.name);
     setError("");
+    if (inviteCode) {
+      setCode(inviteCode);
+      setView("join");
+    }
     onAuthenticated();
   }
 
@@ -140,27 +150,15 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
             <header className="text-center mb-5">
               <h1 className="font-display text-5xl font-bold tracking-tight mb-2 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
                 <span className="bg-gradient-to-b from-amber-200 to-amber-600 bg-clip-text text-transparent">
-                  Mafia Wars
+                  Mafia
                 </span>
               </h1>
-              <p className="text-amber-200/70 text-xs uppercase tracking-[0.22em]">The Town has a problem</p>
+              <p className="text-amber-200/70 text-xs uppercase tracking-[0.22em]">Town has a problem</p>
             </header>
 
             {user ? (
               <>
-                <div className="mb-5 flex items-center justify-between rounded-xl bg-black/40 px-4 py-3 ring-1 ring-white/10">
-                  <div className="min-w-0">
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Signed in</p>
-                    <p className="truncate font-semibold text-white">{user.name}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded-lg px-3 py-2 text-sm text-gray-400 hover:text-white cursor-pointer"
-                    onClick={handleLogout}
-                  >
-                    Log out
-                  </button>
-                </div>
+                <ProfileStrip name={user.name} data={profile.data} onOpen={() => goTo("profile")} />
                 <div className="flex flex-col gap-3">
                   <button type="button" onClick={() => goTo("create")} className={`${primaryBtn} cursor-pointer`}>
                     Create Room
@@ -184,6 +182,11 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                     />
                   ))}
                 </div>
+                {inviteCode && (
+                  <p className="mb-4 rounded-xl bg-amber-950/40 px-4 py-3 text-center text-sm text-amber-100 ring-1 ring-amber-700/40">
+                    You're invited to room <span className="font-mono font-bold tracking-widest">{inviteCode}</span>. Sign in or create an account to join.
+                  </p>
+                )}
                 <AuthCard
                   onAuthenticated={signedIn}
                   onBeforeSubmit={() => { unlockAudio(); startAmbientLoop(); }}
@@ -223,6 +226,16 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
               How to play
             </button>
           </div>
+        )}
+
+        {view === "profile" && user && !deleteOpen && (
+          <ProfileScreen
+            name={user.name}
+            data={profile.data}
+            failed={profile.failed}
+            onBack={() => goTo("main")}
+            onLogout={() => void handleLogout()}
+          />
         )}
 
         {deleteOpen && user && (

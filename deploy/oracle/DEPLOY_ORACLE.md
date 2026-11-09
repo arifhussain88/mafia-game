@@ -1,6 +1,8 @@
-# Oracle Always Free — deploy Mafia Wars
+# Oracle Always Free — deploy Mafia: Town Has a Problem
 
-**Live URL:** http://141.148.204.30/  
+Internal names stay `mafia-wars` (systemd unit, `/opt/mafia-wars`, release tarball, Neon project) so existing servers keep working.
+
+**Live URL:** https://mafiatown.duckdns.org/ (VM IP 141.148.204.30; plain-HTTP requests redirect to HTTPS)  
 **Production branch:** `main`, deployed automatically by GitHub Actions on every push or merged PR (see "GitHub Actions" below)  
 **Runtime on the VM:** Node.js 22 + systemd (`mafia-wars`) + Caddy on `:80` → `127.0.0.1:8080`  
 **Not used:** Docker. Node runs directly under systemd; keep it that way on the Always Free micro.
@@ -240,6 +242,33 @@ sudo systemctl restart mafia-wars
 ```
 
 ---
+
+## Moderation: reports and bans
+
+Players can report a player (lobby flag icon) or a chat message. Reports are stored in Neon (`reports` table) and purged after 12 months, as the privacy policy promises. The admin API is **off unless `ADMIN_TOKEN` is set** on the VM. Without it, or with a wrong token, every `/api/admin` URL returns 404.
+
+One-time, on the VM (use a long random token, at least 24 characters):
+
+```bash
+echo "ADMIN_TOKEN=$(openssl rand -hex 24)" | sudo tee -a /etc/mafia-wars.env
+sudo systemctl restart mafia-wars
+sudo grep ADMIN_TOKEN /etc/mafia-wars.env   # copy it into your password manager
+```
+
+Then, from your PC (PowerShell; put the token in `$t` first):
+
+```powershell
+$h = @{ Authorization = "Bearer $t" }
+Invoke-RestMethod -Headers $h http://141.148.204.30/api/admin/reports                 # open reports
+Invoke-RestMethod -Headers $h "http://141.148.204.30/api/admin/reports?status=all"
+Invoke-RestMethod -Method Post -Headers $h -ContentType application/json -Body '{"status":"resolved"}' http://141.148.204.30/api/admin/reports/<id>/status
+Invoke-RestMethod -Method Post -Headers $h -ContentType application/json -Body '{"email":"player@example.com","reason":"Harassment"}' http://141.148.204.30/api/admin/ban
+Invoke-RestMethod -Method Post -Headers $h -ContentType application/json -Body '{"email":"player@example.com"}' http://141.148.204.30/api/admin/unban
+```
+
+A ban signs the player out everywhere right away. They can't log in again until unbanned, and they're told how to appeal (email). Use `https://<game-host>` instead of the IP once HTTPS is live.
+
+New tables and columns are created automatically when the server starts (`ensureSchema` in `lib/db`), so deploys need no manual database steps.
 
 ## D. Files in this directory
 

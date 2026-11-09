@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Mafia Wars",
-    "slug": "mafia-wars",
-    "scheme": "mafiawars",
+    "name": "Mafia Town",
+    "slug": "mafia-town",
+    "scheme": "mafiatown",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,10 +10,10 @@
     "backgroundColor": "#0b0b0f",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.mafiawars.app"
+      "bundleIdentifier": "com.sayedarif.mafiatown"
     },
     "android": {
-      "package": "com.mafiawars.app",
+      "package": "com.sayedarif.mafiatown",
       "versionCode": 1,
       "permissions": [
         "INTERNET"
@@ -33,7 +33,7 @@
       "predictiveBackGestureEnabled": false
     },
     "extra": {
-      "gameUrl": "http://141.148.204.30"
+      "gameUrl": "https://mafiatown.duckdns.org"
     }
   }
 }

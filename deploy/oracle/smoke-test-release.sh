@@ -42,6 +42,7 @@ fi
 page="$(curl -fsS --max-time 5 "http://127.0.0.1:$PORT/")"
 grep -q '<div id="root"' <<<"$page" || { echo "Web page was not served" >&2; exit 1; }
 curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:$PORT/privacy.html" || { echo "privacy.html missing" >&2; exit 1; }
+curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:$PORT/terms.html" || { echo "terms.html missing" >&2; exit 1; }
 curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:$PORT/delete-account.html" || { echo "delete-account.html missing" >&2; exit 1; }
 
 echo "OK: release boots in production mode and serves the API, game and legal pages."
