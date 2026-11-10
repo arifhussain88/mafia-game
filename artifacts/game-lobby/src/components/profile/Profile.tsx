@@ -19,6 +19,7 @@ const roleLabel = (r: string | null) => (r ? ROLE_LABEL[r] ?? r : "Unknown");
 export function useProfile(token: string | null, refreshKey: unknown) {
   const [data, setData] = useState<ProfileData | null>(null);
   const [failed, setFailed] = useState(false);
+  const [bump, setBump] = useState(0);
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
@@ -28,8 +29,8 @@ export function useProfile(token: string | null, refreshKey: unknown) {
       .then((json: ProfileData) => { if (!cancelled) setData(json); })
       .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
-  }, [token, refreshKey]);
-  return { data, failed };
+  }, [token, refreshKey, bump]);
+  return { data, failed, reload: () => setBump((n) => n + 1) };
 }
 
 function WinRing({ percent, size = 44 }: { percent: number; size?: number }) {
@@ -43,13 +44,13 @@ function WinRing({ percent, size = 44 }: { percent: number; size?: number }) {
         cy={size / 2}
         r={r}
         fill="none"
-        stroke="#d97706"
+        stroke="#9c7424"
         strokeWidth="4"
         strokeLinecap="round"
         strokeDasharray={`${(percent / 100) * c} ${c}`}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
       />
-      <text x="50%" y="54%" textAnchor="middle" dominantBaseline="middle" fontSize="11" fontWeight="600" fill="#fde68a">
+      <text x="50%" y="54%" textAnchor="middle" dominantBaseline="middle" fontSize="11" fontWeight="600" fill="#f0d995">
         {percent}%
       </text>
     </svg>
@@ -113,14 +114,29 @@ export function ProfileScreen({
   failed,
   onBack,
   onLogout,
+  onReload,
 }: {
   name: string;
   data: ProfileData | null;
   failed: boolean;
   onBack: () => void;
   onLogout: () => void;
+  onReload?: () => void;
 }) {
   const [shareNote, setShareNote] = useState<string | null>(null);
+  const [demoBusy, setDemoBusy] = useState(false);
+
+  /** Dev builds only: fill the profile with sample matches to preview the screen. */
+  async function loadDemo() {
+    setDemoBusy(true);
+    try {
+      const token = localStorage.getItem("mafia-token");
+      await fetch("/api/dev/demo-history", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      onReload?.();
+    } finally {
+      setDemoBusy(false);
+    }
+  }
   const since = data ? new Date(data.since).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "";
 
   async function shareRecord() {
@@ -235,6 +251,18 @@ export function ProfileScreen({
             {shareNote ?? "Share my record"}
           </button>
         </>
+      )}
+
+      {import.meta.env.DEV && (
+        <button
+          type="button"
+          onClick={() => void loadDemo()}
+          disabled={demoBusy}
+          className="mt-4 flex w-full min-h-[40px] items-center justify-center gap-2 rounded-lg border border-dashed border-amber-700/50 text-xs text-amber-200/80 hover:bg-amber-950/30 cursor-pointer"
+        >
+          {demoBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+          Load demo matches (dev only)
+        </button>
       )}
 
       <button

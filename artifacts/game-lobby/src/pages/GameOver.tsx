@@ -9,6 +9,7 @@ type Props = {
   mySocketId: string;
   isHost: boolean;
   onPlayAgain: () => void;
+  onLeave: () => void;
 };
 
 const ROLE_ORDER: Role[] = ["mafia", "detective", "doctor", "civilian"];
@@ -20,7 +21,7 @@ const ROLE_META: Record<Role, { label: string; sectionTitle: string; accentCls: 
   civilian:  { label: "Civilian",  sectionTitle: "Civilians", accentCls: "text-gray-400",   dotCls: "bg-gray-500" },
 };
 
-export default function GameOver({ winner, players, mySocketId, isHost, onPlayAgain }: Props) {
+export default function GameOver({ winner, players, mySocketId, isHost, onPlayAgain, onLeave }: Props) {
   const [revealAll, setRevealAll] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [showRoles, setShowRoles] = useState(false);
@@ -137,7 +138,7 @@ export default function GameOver({ winner, players, mySocketId, isHost, onPlayAg
           <button
             type="button"
             onClick={onPlayAgain}
-            className="w-full min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-base md:text-lg font-semibold transition-colors cursor-pointer"
+            className="w-full min-h-[52px] rounded-xl btn-gold text-base md:text-lg font-semibold cursor-pointer"
           >
             Play Again
           </button>
@@ -149,6 +150,13 @@ export default function GameOver({ winner, players, mySocketId, isHost, onPlayAg
             </div>
           </div>
         )}
+        <button
+          type="button"
+          onClick={onLeave}
+          className="w-full min-h-[48px] mt-3 rounded-xl text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+        >
+          Back to home
+        </button>
       </div>
     </div>
   );

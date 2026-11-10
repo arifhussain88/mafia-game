@@ -11,7 +11,7 @@ const ROLE_BORDER: Record<Role, string> = {
   mafia:     "#7f1d1d",
   doctor:    "#065f46",
   detective: "#78350f",
-  civilian:  "#374151",
+  civilian:  "#403c35",
 };
 
 const ROLE_GLOW: Record<Role, string> = {

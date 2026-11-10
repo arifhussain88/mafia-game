@@ -48,10 +48,10 @@ export default function Atmosphere({ phase }: Props) {
         className="absolute inset-0"
         style={{
           background: isNightPhase
-            ? "linear-gradient(180deg, rgba(8,10,16,0.55) 0%, rgba(8,10,16,0.78) 45%, rgba(8,10,16,0.92) 100%)"
+            ? "linear-gradient(180deg, rgba(14,12,10,0.55) 0%, rgba(14,12,10,0.78) 45%, rgba(14,12,10,0.92) 100%)"
             : isHome
-              ? "linear-gradient(180deg, rgba(8,10,16,0.18) 0%, rgba(8,10,16,0.36) 48%, rgba(8,10,16,0.58) 100%)"
-              : "linear-gradient(180deg, rgba(8,10,16,0.45) 0%, rgba(8,10,16,0.72) 50%, rgba(8,10,16,0.9) 100%)",
+              ? "linear-gradient(180deg, rgba(14,12,10,0.18) 0%, rgba(14,12,10,0.36) 48%, rgba(14,12,10,0.58) 100%)"
+              : "linear-gradient(180deg, rgba(14,12,10,0.45) 0%, rgba(14,12,10,0.72) 50%, rgba(14,12,10,0.9) 100%)",
         }}
       />
 

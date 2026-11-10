@@ -61,9 +61,11 @@ export function persistMatchEnd(input: {
   /** "draw" when the match stalled out with no deaths (nobody wins). */
   winner: "mafia" | "civilians" | "draw";
   players: PersistPlayer[];
+  /** Only for dev demo data; real matches end now. */
+  endedAt?: Date;
 }) {
   const matchId = crypto.randomUUID();
-  const endedAt = new Date();
+  const endedAt = input.endedAt ?? new Date();
   const rows = input.players.map((p) => ({
     id: crypto.randomUUID(),
     matchId,

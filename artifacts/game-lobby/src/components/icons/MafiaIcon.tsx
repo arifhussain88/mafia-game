@@ -16,17 +16,17 @@ export default function MafiaIcon({ size = 72 }: { size?: number }) {
       {/* Shadow below brim — mystery face */}
       <ellipse cx="40" cy="48" rx="15" ry="4" fill="#0c0204" />
       {/* Coat body */}
-      <path d="M9 55 L71 55 L77 80 L3 80 Z" fill="#374151" />
+      <path d="M9 55 L71 55 L77 80 L3 80 Z" fill="#403c35" />
       {/* Left lapel */}
-      <path d="M28 55 L14 76 L30 76 Z" fill="#4b5563" />
+      <path d="M28 55 L14 76 L30 76 Z" fill="#5c574e" />
       {/* Right lapel */}
-      <path d="M52 55 L66 76 L50 76 Z" fill="#4b5563" />
+      <path d="M52 55 L66 76 L50 76 Z" fill="#5c574e" />
       {/* Center button seam */}
-      <line x1="40" y1="58" x2="40" y2="78" stroke="#1f2937" strokeWidth="2" strokeDasharray="3 3" />
+      <line x1="40" y1="58" x2="40" y2="78" stroke="#2a2722" strokeWidth="2" strokeDasharray="3 3" />
       {/* Collar triangle left */}
-      <path d="M29 55 L40 46 L40 55 Z" fill="#4b5563" />
+      <path d="M29 55 L40 46 L40 55 Z" fill="#5c574e" />
       {/* Collar triangle right */}
-      <path d="M51 55 L40 46 L40 55 Z" fill="#6b7280" />
+      <path d="M51 55 L40 46 L40 55 Z" fill="#7a7469" />
     </svg>
   );
 }

@@ -10,6 +10,12 @@ import { useEffect, useRef, useState } from "react";
 const BACKGROUND = "/background-mobile.jpg";
 const ROLE_ART = ["mafia", "detective", "doctor", "civilian"].map((r) => `/roles/${r}.webp`);
 const MIN_SHOW_MS = 1400;
+
+type BootWindow = Window & {
+  /** Set by the Android app: share of the bar it already covered loading the page. */
+  __MAFIA_APP_BOOT?: number;
+  ReactNativeWebView?: { postMessage: (msg: string) => void };
+};
 const MAX_WAIT_MS = 12000;
 
 const LINES = [
@@ -50,9 +56,15 @@ export default function LoadingScreen({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     const started = performance.now();
+    const w = window as BootWindow;
+    // In the app, the native screen already showed the page download (0..base);
+    // continue the same bar from there, and tell it to step aside.
+    const base = typeof w.__MAFIA_APP_BOOT === "number" ? Math.min(0.9, Math.max(0, w.__MAFIA_APP_BOOT)) : 0;
+    w.ReactNativeWebView?.postMessage(JSON.stringify({ type: "splash" }));
     // Weighted parts: the background is most of the bytes.
     const parts = { bg: 0, roles: 0, fonts: 0 };
-    const update = () => setProgress(parts.bg * 0.72 + parts.roles * 0.18 + parts.fonts * 0.1);
+    const update = () => setProgress(base + (1 - base) * (parts.bg * 0.72 + parts.roles * 0.18 + parts.fonts * 0.1));
+    update();
 
     const finish = () => {
       if (doneRef.current) return;
@@ -122,14 +134,14 @@ export default function LoadingScreen({ onDone }: { onDone: () => void }) {
 
       <div className="relative z-10 mb-[14vh] flex w-full max-w-xs flex-col items-center px-6 text-center">
         <h1 className="font-display text-6xl font-bold tracking-tight drop-shadow-[0_4px_18px_rgba(0,0,0,0.8)]">
-          <span className="bg-gradient-to-b from-amber-200 to-amber-600 bg-clip-text text-transparent">Mafia</span>
+          <span className="text-gold-title">Mafia</span>
         </h1>
         <p className="mt-1 text-[11px] uppercase tracking-[0.3em] text-amber-200/80">Town has a problem</p>
 
         <div className="mt-10 w-full">
           <div className="relative h-2 w-full overflow-hidden rounded-full bg-black/60 ring-1 ring-amber-200/15">
             <div
-              className="relative h-full rounded-full bg-gradient-to-r from-amber-700 via-amber-500 to-amber-300 shadow-[0_0_14px_rgba(245,158,11,0.65)] transition-[width] duration-300 ease-out"
+              className="relative h-full rounded-full bar-gold transition-[width] duration-300 ease-out"
               style={{ width: `${Math.max(3, pct)}%` }}
             >
               <span

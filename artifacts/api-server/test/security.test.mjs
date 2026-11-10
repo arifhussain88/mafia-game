@@ -194,6 +194,12 @@ describe("production mode", () => {
   before(async () => { prod = await startServer({ NODE_ENV: "production", MAX_SOCKETS: "2" }); });
   after(async () => { await prod?.stop(); });
 
+  test("dev-only demo data route does not exist", async () => {
+    const acct = await signup(prod);
+    const r = await post(prod, "/api/dev/demo-history", {}, acct.body.token);
+    assert.equal(r.status, 404);
+  });
+
   test("dev test logins are disabled", async () => {
     await sleep(300);
     const r = await post(prod, "/api/auth/login", { email: TEST_USERS[0], password: "testdev123" });

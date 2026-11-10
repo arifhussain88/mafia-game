@@ -124,7 +124,7 @@ export default function RoomChat({
                         <MoreHorizontal className="h-4 w-4" aria-hidden />
                       </button>
                       {menuForId === message.id && (
-                        <div className="absolute right-0 top-8 z-10 min-w-[9.5rem] rounded-lg border border-amber-900/40 bg-[#0c0c12] py-1 shadow-xl">
+                        <div className="absolute right-0 top-8 z-10 min-w-[9.5rem] rounded-lg border border-amber-900/40 bg-[#121110] py-1 shadow-xl">
                           <button
                             type="button"
                             className="w-full px-3 py-2 text-left text-xs text-amber-200 hover:bg-amber-950/40 cursor-pointer"
@@ -176,7 +176,7 @@ export default function RoomChat({
               />
               <button
                 type="submit"
-                className="min-h-[40px] px-3 rounded-xl bg-amber-700 text-amber-50 text-sm font-semibold cursor-pointer"
+                className="min-h-[40px] px-3 rounded-xl btn-gold text-sm font-semibold cursor-pointer"
               >
                 Send
               </button>

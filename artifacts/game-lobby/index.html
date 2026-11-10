@@ -3,15 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="theme-color" content="#07080c" />
     <title>Mafia: Town Has a Problem</title>
     <meta name="description" content="Mafia: Town Has a Problem, a social deduction party game. Find the Mafia before they find you." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <!-- Fonts load without blocking the first paint, so the splash below shows at once. -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" media="print" onload="this.media='all'">
+    <link rel="preload" as="image" href="/background-mobile.jpg">
+    <style>
+      html, body { margin: 0; background: #07080c; }
+      #boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 14vh; font-family: Georgia, "Times New Roman", serif; }
+      #boot h1 { margin: 0; font-size: 60px; font-weight: 700; background: linear-gradient(#fde68a, #d97706); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      #boot p { margin: 4px 0 40px; font: 11px/1 system-ui, sans-serif; letter-spacing: .3em; text-transform: uppercase; color: rgba(240, 217, 149, .8); }
+      #boot .track { width: 260px; max-width: 80vw; height: 8px; border-radius: 4px; overflow: hidden; background: rgba(0, 0, 0, .6); box-shadow: inset 0 0 0 1px rgba(240, 217, 149, .15); }
+      #boot .sweep { width: 35%; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #7a5616, #c9a24a 60%, #f0d995); animation: bootSweep 1.2s ease-in-out infinite; }
+      #boot .label { width: 260px; max-width: 80vw; margin-top: 12px; font: 12px system-ui, sans-serif; color: rgba(248, 236, 201, .7); }
+      @keyframes bootSweep { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown until the game's code has downloaded; React then takes over with
+           the real progress bar for the art, fonts and role cards. -->
+      <div id="boot" role="progressbar" aria-label="Loading the game">
+        <h1>Mafia</h1>
+        <p>Town has a problem</p>
+        <div class="track"><div class="sweep"></div></div>
+        <div class="label">Loading the game…</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

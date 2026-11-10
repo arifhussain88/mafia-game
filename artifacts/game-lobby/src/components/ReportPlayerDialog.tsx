@@ -31,7 +31,7 @@ export default function ReportPlayerDialog({ playerName, onClose, onSubmit }: Pr
   const [reason, setReason] = useState<string>("offensive-name");
   return (
     <AlertDialog open={playerName !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <AlertDialogContent className="game-panel border-gray-800 bg-[#0c0c12] text-gray-200">
+      <AlertDialogContent className="game-panel border-gray-800 bg-[#121110] text-gray-200">
         <AlertDialogHeader>
           <AlertDialogTitle className="font-display text-amber-100">Report {playerName}?</AlertDialogTitle>
           <AlertDialogDescription className="text-gray-400">

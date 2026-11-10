@@ -93,7 +93,7 @@ export default function AuthCard({ onAuthenticated, onBeforeSubmit, onFailed }: 
             onClick={() => switchTo(m)}
             className={`min-h-[44px] rounded-lg text-sm font-semibold tracking-wide transition-colors cursor-pointer ${
               mode === m
-                ? "bg-amber-600 text-white shadow-[0_0_18px_rgba(217,119,6,0.35)]"
+                ? "btn-gold"
                 : "text-gray-400 hover:text-gray-200"
             }`}
           >
@@ -481,7 +481,7 @@ function SubmitButton({ busy, label, busyLabel }: { busy: boolean; label: string
     <button
       type="submit"
       disabled={busy}
-      className="mt-1 flex w-full min-h-[52px] items-center justify-center gap-2 rounded-xl bg-amber-600 text-lg font-semibold text-white transition-colors hover:bg-amber-500 active:bg-amber-700 disabled:cursor-wait disabled:opacity-70 cursor-pointer shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)]"
+      className="mt-1 flex w-full min-h-[52px] items-center justify-center gap-2 rounded-xl btn-gold text-lg font-semibold disabled:cursor-wait cursor-pointer"
     >
       {busy && <Loader2 className="h-5 w-5 animate-spin" aria-hidden />}
       {busy ? busyLabel : label}

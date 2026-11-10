@@ -6,6 +6,7 @@ import pinoHttp from "pino-http";
 import adminRouter from "./routes/admin";
 import authRouter from "./routes/auth";
 import profileRouter from "./routes/profile";
+import devRouter from "./routes/dev";
 import healthRouter from "./routes/health";
 import { logger } from "./lib/logger";
 
@@ -56,6 +57,8 @@ app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 app.use("/api/auth", authRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/profile", profileRouter);
+// Demo data and other helpers for local development only; never on the live server.
+if (process.env.NODE_ENV !== "production") app.use("/api/dev", devRouter);
 app.use("/api", healthRouter);
 
 app.use((err: any, req: any, res: any, next: any) => {
