@@ -17,7 +17,7 @@ type Props = {
 type View = "main" | "create" | "join" | "profile";
 
 const inputCls =
-  "w-full min-h-[52px] px-4 rounded-xl bg-black/55 ring-1 ring-white/12 text-white placeholder-gray-600 text-base focus:outline-none focus:ring-2 focus:ring-amber-500/70 transition-shadow";
+  "w-full min-h-[52px] px-4 rounded-xl bg-black/55 ring-1 ring-white/12 text-white placeholder:text-gray-400/70 text-base focus:outline-none focus:ring-2 focus:ring-amber-500/70 transition-shadow";
 
 const primaryBtn =
   "w-full min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-lg font-semibold transition-colors shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)]";
@@ -247,7 +247,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
             <form onSubmit={(e) => { e.preventDefault(); void handleDeleteAccount(); }}>
               <input
                 className={inputCls + " mb-2"}
-                placeholder="Confirm your password"
+                placeholder="Your password"
                 type="password"
                 autoComplete="current-password"
                 value={deletePass}
@@ -288,7 +288,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                   type="text"
                   value={name}
                   onChange={(e) => { setName(e.target.value); setError(""); }}
-                  placeholder="e.g. Ghost"
+                  placeholder="Ghost"
                   maxLength={24}
                   autoComplete="nickname"
                   className={inputCls}
@@ -315,7 +315,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                   type="text"
                   value={code}
                   onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(""); }}
-                  placeholder="e.g. AB3X7"
+                  placeholder="AB3X7"
                   maxLength={5}
                   autoCapitalize="characters"
                   autoComplete="off"
@@ -329,7 +329,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                   type="text"
                   value={name}
                   onChange={(e) => { setName(e.target.value); setError(""); }}
-                  placeholder="e.g. Ghost"
+                  placeholder="Ghost"
                   maxLength={24}
                   autoComplete="nickname"
                   className={inputCls}

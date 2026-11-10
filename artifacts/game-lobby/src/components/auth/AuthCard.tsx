@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeOff, Loader2, Lock, Mail, UserRound } from "lucide-react";
-import { AuthError, hasHadAccount, postAuth, saveSession, type AuthUser } from "@/lib/auth-api";
+import { AuthError, postAuth, saveSession, type AuthUser } from "@/lib/auth-api";
 
 type Mode = "signup" | "login";
 
@@ -68,7 +68,8 @@ function isoDob(v: SignupValues) {
 }
 
 export default function AuthCard({ onAuthenticated, onBeforeSubmit, onFailed }: Props) {
-  const [mode, setMode] = useState<Mode>(() => (hasHadAccount() ? "login" : "signup"));
+  // Log in first; new players switch to Create account with one tap.
+  const [mode, setMode] = useState<Mode>("login");
   const [prefillEmail, setPrefillEmail] = useState("");
 
   function switchTo(next: Mode, email?: string) {
@@ -171,11 +172,13 @@ function LoginForm({
         autoCapitalize="none"
         spellCheck={false}
         autoFocus={!defaultEmail}
+        placeholder="you@example.com"
         {...register("email")}
       />
       <PasswordField
         label="Password"
         autoComplete="current-password"
+        placeholder="Your password"
         error={errors.password?.message}
         autoFocus={Boolean(defaultEmail)}
         {...register("password")}
@@ -260,7 +263,7 @@ function SignupForm({
         error={errors.name?.message}
         maxLength={24}
         autoComplete="nickname"
-        placeholder="e.g. Ghost"
+        placeholder="Ghost"
         autoFocus
         {...register("name")}
       />
@@ -273,12 +276,14 @@ function SignupForm({
         autoComplete="email"
         autoCapitalize="none"
         spellCheck={false}
+        placeholder="you@example.com"
         {...register("email")}
       />
       <div>
         <PasswordField
           label="Password"
           autoComplete="new-password"
+          placeholder="At least 8 characters"
           error={errors.password?.message}
           {...register("password")}
         />
@@ -338,7 +343,7 @@ function SignupForm({
 /* ---------- small building blocks ---------- */
 
 const fieldBase =
-  "w-full min-h-[50px] rounded-xl bg-black/55 text-white text-base placeholder:text-gray-600 ring-1 transition-shadow focus:outline-none focus:ring-2";
+  "w-full min-h-[50px] rounded-xl bg-black/55 text-white text-base placeholder:text-gray-400/70 ring-1 transition-shadow focus:outline-none focus:ring-2";
 const ringOk = "ring-white/12 focus:ring-amber-500/70";
 const ringBad = "ring-red-500/70 focus:ring-red-400";
 

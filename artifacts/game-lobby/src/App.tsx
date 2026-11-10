@@ -3,6 +3,7 @@ import { io, Socket } from "socket.io-client";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import Home from "@/pages/Home";
+import LoadingScreen from "@/components/LoadingScreen";
 import Lobby, { DEFAULT_TIMER_SETTINGS, type TimerSettings } from "@/pages/Lobby";
 import MatchCountdown from "@/pages/MatchCountdown";
 import RoleReveal from "@/pages/RoleReveal";
@@ -138,6 +139,9 @@ export default function App() {
 
   const [winner, setWinner] = useState<Winner | null>(null);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  // Launch splash: the town plus a real asset-loading bar, shown once per app open.
+  const [booted, setBooted] = useState(false);
+  const handleBooted = useCallback(() => setBooted(true), []);
   const [gameOverPlayers, setGameOverPlayers] = useState<Player[]>([]);
   const [tickerMessage, setTickerMessage] = useState<string | null>(null);
   const tickerSeqRef = useRef(0);
@@ -612,6 +616,7 @@ export default function App() {
 
   return (
     <div className="game-shell min-h-screen text-gray-100 relative z-0">
+      {!booted && <LoadingScreen onDone={handleBooted} />}
       <Atmosphere phase={phase} />
       {phase === "home" && (
         <Home
