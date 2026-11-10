@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 
-/** Gold ring spinner used for every in-game wait. */
-export function GoldSpinner({ size = 20, className = "" }: { size?: number; className?: string }) {
+/**
+ * Ring spinner for every wait. "gold" on dark backgrounds; "ink" inside gold
+ * buttons, where it takes the button's dark text colour.
+ */
+export function GoldSpinner({ size = 20, className = "", tone = "gold" }: { size?: number; className?: string; tone?: "gold" | "ink" }) {
   return (
     <span
       role="status"
       aria-label="Loading"
-      className={`inline-block shrink-0 animate-spin rounded-full border-2 border-amber-200/20 border-t-amber-300 ${className}`}
+      className={`inline-block shrink-0 animate-spin rounded-full border-2 ${tone === "ink" ? "border-current/25 border-t-current" : "border-[#fde68a]/20 border-t-[#fde68a]"} ${className}`}
       style={{ width: size, height: size }}
     />
   );

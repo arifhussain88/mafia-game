@@ -54,7 +54,7 @@ function originOf(url: string): string | null {
 const GAME_ORIGIN = originOf(GAME_URL) ?? GAME_URL.toLowerCase();
 
 const BG = '#0b0b0f';
-const ACCENT = '#a37a26';
+const ACCENT = '#d97706';
 const GOLD_LIGHT = '#f0d995';
 /**
  * Share of the overall progress bar covered by the page download (native bar).
@@ -224,10 +224,11 @@ const styles = StyleSheet.create({
     paddingBottom: '16%',
     gap: 24,
   },
-  brand: { color: '#e9c46a', fontSize: 52, fontWeight: '800', fontFamily: 'serif' },
+  brand: { color: '#f3c45c', fontSize: 52, fontWeight: '800', fontFamily: 'serif' },
   tagline: { color: 'rgba(240,217,149,0.8)', fontSize: 11, letterSpacing: 3, marginTop: -16 },
   track: { width: 240, height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(240,217,149,0.15)', overflow: 'hidden', marginTop: 24 },
-  fill: { height: '100%', borderRadius: 4, backgroundColor: '#c9a24a' },
+  // Midpoint of the title gradient (#fde68a -> #d97706); RN views have no gradients.
+  fill: { height: '100%', borderRadius: 4, backgroundColor: '#ebae48' },
   barRow: { width: 240, flexDirection: 'row', justifyContent: 'space-between', marginTop: -12 },
   barLabel: { color: 'rgba(248,236,201,0.7)', fontSize: 12 },
   barPct: { color: GOLD_LIGHT, fontSize: 12, fontVariant: ['tabular-nums'] },

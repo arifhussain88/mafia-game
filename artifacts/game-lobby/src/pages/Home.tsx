@@ -300,7 +300,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
               </label>
               {error && <p className="text-red-400 text-sm">{error}</p>}
               <button type="submit" disabled={roomPending !== null} className={`${primaryBtn} cursor-pointer flex items-center justify-center gap-2`}>
-                {roomPending === "create" && <GoldSpinner size={18} />}
+                {roomPending === "create" && <GoldSpinner size={18} tone="ink" />}
                 {roomPending === "create" ? "Creating room…" : "Create Room"}
               </button>
               <button type="button" onClick={() => goTo("main")} className={`${ghostBtn} cursor-pointer`}>Back</button>
@@ -344,7 +344,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
               </label>
               {error && <p className="text-red-400 text-sm">{error}</p>}
               <button type="submit" disabled={roomPending !== null} className={`${primaryBtn} cursor-pointer flex items-center justify-center gap-2`}>
-                {roomPending === "join" && <GoldSpinner size={18} />}
+                {roomPending === "join" && <GoldSpinner size={18} tone="ink" />}
                 {roomPending === "join" ? "Joining room…" : "Join Room"}
               </button>
               <button type="button" onClick={() => { goTo("main"); setCode(""); }} className={`${ghostBtn} cursor-pointer`}>Back</button>

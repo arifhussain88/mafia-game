@@ -38,13 +38,19 @@ function WinRing({ percent, size = 44 }: { percent: number; size?: number }) {
   const c = 2 * Math.PI * r;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden className="shrink-0">
+      <defs>
+        <linearGradient id="ring-gold" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fde68a" />
+          <stop offset="100%" stopColor="#d97706" />
+        </linearGradient>
+      </defs>
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
       <circle
         cx={size / 2}
         cy={size / 2}
         r={r}
         fill="none"
-        stroke="#9c7424"
+        stroke="url(#ring-gold)"
         strokeWidth="4"
         strokeLinecap="round"
         strokeDasharray={`${(percent / 100) * c} ${c}`}
@@ -215,7 +221,7 @@ export function ProfileScreen({
                 <span className="text-gray-300">{roleLabel(r.role)}</span>
                 <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
                   <div
-                    className={`h-full rounded-full ${data.best?.role === r.role ? "bg-amber-500" : "bg-gray-500"}`}
+                    className={`h-full rounded-full ${data.best?.role === r.role ? "bar-gold" : "bg-gray-500"}`}
                     style={{ width: `${r.games ? r.winRate : 0}%` }}
                   />
                 </div>
