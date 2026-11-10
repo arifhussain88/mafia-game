@@ -39,7 +39,7 @@ export default function MatchCountdown({ players, timerEndsAt }: Props) {
         <div
           key={display}
           className="font-display text-7xl md:text-8xl font-bold text-white tabular-nums mb-6"
-          style={{ textShadow: "0 0 40px rgba(217,119,6,0.35)" }}
+          style={{ textShadow: "0 0 40px rgba(201,162,74,0.35)" }}
         >
           {display}
         </div>

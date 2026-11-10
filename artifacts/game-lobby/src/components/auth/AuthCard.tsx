@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeOff, Loader2, Lock, Mail, UserRound } from "lucide-react";
-import { AuthError, hasHadAccount, postAuth, saveSession, type AuthUser } from "@/lib/auth-api";
+import { AuthError, postAuth, saveSession, type AuthUser } from "@/lib/auth-api";
 
 type Mode = "signup" | "login";
 
@@ -68,7 +68,8 @@ function isoDob(v: SignupValues) {
 }
 
 export default function AuthCard({ onAuthenticated, onBeforeSubmit, onFailed }: Props) {
-  const [mode, setMode] = useState<Mode>(() => (hasHadAccount() ? "login" : "signup"));
+  // Log in first; new players switch to Create account with one tap.
+  const [mode, setMode] = useState<Mode>("login");
   const [prefillEmail, setPrefillEmail] = useState("");
 
   function switchTo(next: Mode, email?: string) {
@@ -92,7 +93,7 @@ export default function AuthCard({ onAuthenticated, onBeforeSubmit, onFailed }: 
             onClick={() => switchTo(m)}
             className={`min-h-[44px] rounded-lg text-sm font-semibold tracking-wide transition-colors cursor-pointer ${
               mode === m
-                ? "bg-amber-600 text-white shadow-[0_0_18px_rgba(217,119,6,0.35)]"
+                ? "btn-gold"
                 : "text-gray-400 hover:text-gray-200"
             }`}
           >
@@ -171,11 +172,13 @@ function LoginForm({
         autoCapitalize="none"
         spellCheck={false}
         autoFocus={!defaultEmail}
+        placeholder="you@example.com"
         {...register("email")}
       />
       <PasswordField
         label="Password"
         autoComplete="current-password"
+        placeholder="Your password"
         error={errors.password?.message}
         autoFocus={Boolean(defaultEmail)}
         {...register("password")}
@@ -260,7 +263,7 @@ function SignupForm({
         error={errors.name?.message}
         maxLength={24}
         autoComplete="nickname"
-        placeholder="e.g. Ghost"
+        placeholder="Ghost"
         autoFocus
         {...register("name")}
       />
@@ -273,12 +276,14 @@ function SignupForm({
         autoComplete="email"
         autoCapitalize="none"
         spellCheck={false}
+        placeholder="you@example.com"
         {...register("email")}
       />
       <div>
         <PasswordField
           label="Password"
           autoComplete="new-password"
+          placeholder="At least 8 characters"
           error={errors.password?.message}
           {...register("password")}
         />
@@ -338,7 +343,7 @@ function SignupForm({
 /* ---------- small building blocks ---------- */
 
 const fieldBase =
-  "w-full min-h-[50px] rounded-xl bg-black/55 text-white text-base placeholder:text-gray-600 ring-1 transition-shadow focus:outline-none focus:ring-2";
+  "w-full min-h-[50px] rounded-xl bg-black/55 text-white text-base placeholder:text-gray-400/70 ring-1 transition-shadow focus:outline-none focus:ring-2";
 const ringOk = "ring-white/12 focus:ring-amber-500/70";
 const ringBad = "ring-red-500/70 focus:ring-red-400";
 
@@ -476,7 +481,7 @@ function SubmitButton({ busy, label, busyLabel }: { busy: boolean; label: string
     <button
       type="submit"
       disabled={busy}
-      className="mt-1 flex w-full min-h-[52px] items-center justify-center gap-2 rounded-xl bg-amber-600 text-lg font-semibold text-white transition-colors hover:bg-amber-500 active:bg-amber-700 disabled:cursor-wait disabled:opacity-70 cursor-pointer shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)]"
+      className="mt-1 flex w-full min-h-[52px] items-center justify-center gap-2 rounded-xl btn-gold text-lg font-semibold disabled:cursor-wait cursor-pointer"
     >
       {busy && <Loader2 className="h-5 w-5 animate-spin" aria-hidden />}
       {busy ? busyLabel : label}

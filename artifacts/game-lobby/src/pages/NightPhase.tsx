@@ -41,8 +41,8 @@ const ROLE_LABEL: Record<Role, string> = {
 const ROLE_COLOR: Record<Role, string> = {
   mafia:     "#dc2626",
   doctor:    "#10b981",
-  detective: "#f59e0b",
-  civilian:  "#6b7280",
+  detective: "#bb8f2f",
+  civilian:  "#7a7469",
 };
 
 const INSTRUCTION: Record<NightStep, string> = {

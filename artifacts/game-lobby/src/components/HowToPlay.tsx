@@ -49,7 +49,7 @@ export default function HowToPlay({ open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="game-panel max-h-[90vh] w-[calc(100%-2rem)] max-w-md overflow-y-auto border-gray-800 bg-[#0c0c12] p-5 text-left text-gray-200 sm:rounded-2xl"
+        className="game-panel max-h-[90vh] w-[calc(100%-2rem)] max-w-md overflow-y-auto border-gray-800 bg-[#121110] p-5 text-left text-gray-200 sm:rounded-2xl"
       >
         <DialogHeader className="text-left space-y-2 pr-6">
           <DialogTitle className="font-display text-2xl font-bold text-white">

@@ -3,6 +3,8 @@ import { io, Socket } from "socket.io-client";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import Home from "@/pages/Home";
+import LoadingScreen from "@/components/LoadingScreen";
+import { BusyOverlay, ConnectionIndicator, type ConnectionStatus } from "@/components/Loaders";
 import Lobby, { DEFAULT_TIMER_SETTINGS, type TimerSettings } from "@/pages/Lobby";
 import MatchCountdown from "@/pages/MatchCountdown";
 import RoleReveal from "@/pages/RoleReveal";
@@ -138,6 +140,24 @@ export default function App() {
 
   const [winner, setWinner] = useState<Winner | null>(null);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  // Launch splash: the town plus a real asset-loading bar, shown once per app open.
+  const [booted, setBooted] = useState(false);
+  const handleBooted = useCallback(() => setBooted(true), []);
+  // Visible waiting states so slow connections never look like a frozen app.
+  const [connStatus, setConnStatus] = useState<ConnectionStatus>("idle");
+  const [rejoining, setRejoining] = useState(false);
+  const [roomPending, setRoomPending] = useState<"create" | "join" | null>(null);
+  const pendingTimer = useRef<number | undefined>(undefined);
+  const clearPending = useCallback(() => {
+    window.clearTimeout(pendingTimer.current);
+    setRoomPending(null);
+  }, []);
+  // Never leave the rejoin overlay up forever if the server goes quiet.
+  useEffect(() => {
+    if (!rejoining) return;
+    const t = window.setTimeout(() => setRejoining(false), 12000);
+    return () => window.clearTimeout(t);
+  }, [rejoining]);
   const [gameOverPlayers, setGameOverPlayers] = useState<Player[]>([]);
   const [tickerMessage, setTickerMessage] = useState<string | null>(null);
   const tickerSeqRef = useRef(0);
@@ -186,6 +206,12 @@ export default function App() {
     setGameOverPlayers([]);
     setTickerMessage(null);
   }
+
+  /** Lobby / results: give up the seat (no forfeit) and return Home. */
+  const leaveRoom = useCallback(() => {
+    socketRef.current?.emit("leave-game");
+    resetToHome();
+  }, []);
 
   const leaveMatch = useCallback(() => {
     if (leaveSentRef.current) return;
@@ -300,10 +326,14 @@ export default function App() {
 
     socket.on("connect", () => {
       setMySocketId(socket.id ?? "");
+      setConnStatus("online");
       // Every (re)connect gets a new socket id that is in no room yet. If we
       // were seated somewhere, ask for that seat back.
       const code = savedRoom();
-      if (code) socket.emit("rejoin-room", { code });
+      if (code) {
+        setRejoining(true);
+        socket.emit("rejoin-room", { code });
+      }
     });
 
     const signOutLocally = () => {
@@ -338,10 +368,12 @@ export default function App() {
         toast({ title: "Server is full", description: "Lots of players right now. Retrying shortly…" });
         return;
       }
-      toast({ title: "Connection issue", description: "Trying to reconnect…" });
+      // Shown by the connection indicator instead of a toast per retry.
+      setConnStatus((s) => (s === "online" || s === "reconnecting" ? "reconnecting" : "connecting"));
     });
 
     socket.on("rejoin-failed", (data: { message?: string }) => {
+      setRejoining(false);
       forgetRoom();
       if (phaseRef.current === "home") return;
       resetToHome();
@@ -349,11 +381,15 @@ export default function App() {
     });
 
     socket.on("disconnect", (reason) => {
-      if (reason === "io client disconnect") return;
-      toast({ title: "Disconnected", description: "Reconnecting…" });
+      if (reason === "io client disconnect") {
+        setConnStatus("idle");
+        return;
+      }
+      setConnStatus("reconnecting");
     });
 
     socket.on("room-created", (data: { code: string; players: Player[]; isHost: boolean; timerSettings?: TimerSettings }) => {
+      clearPending();
       saveRoom(data.code);
       setRoomCode(data.code);
       setPlayers(data.players);
@@ -363,6 +399,7 @@ export default function App() {
     });
 
     socket.on("room-joined", (data: { code: string; players: Player[]; isHost: boolean; timerSettings?: TimerSettings }) => {
+      clearPending();
       saveRoom(data.code);
       clearInviteCode();
       setRoomCode(data.code);
@@ -422,6 +459,8 @@ export default function App() {
     );
 
     socket.on("reconnected", (data: RejoinSnapshot) => {
+      setRejoining(false);
+      clearPending();
       const wasHome = phaseRef.current === "home";
       saveRoom(data.code);
       leaveSentRef.current = false;
@@ -525,6 +564,7 @@ export default function App() {
     });
 
     socket.on("room-error", (data: { message: string }) => {
+      clearPending();
       toast({ title: "Error", description: data.message, variant: "destructive" });
     });
 
@@ -532,19 +572,30 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const startPending = useCallback((kind: "create" | "join") => {
+    window.clearTimeout(pendingTimer.current);
+    setRoomPending(kind);
+    pendingTimer.current = window.setTimeout(() => {
+      setRoomPending(null);
+      toast({ title: "That's taking too long", description: "Check your connection and try again.", variant: "destructive" });
+    }, 15000);
+  }, [toast]);
+
   const createRoom = useCallback((name: string) => {
+    startPending("create");
     unlockAudio();
     preloadGunshot();
     setMyName(name);
     socketRef.current?.emit("create-room", { name });
-  }, []);
+  }, [startPending]);
 
   const joinRoom = useCallback((code: string, name: string) => {
+    startPending("join");
     unlockAudio();
     preloadGunshot();
     setMyName(name);
     socketRef.current?.emit("join-room", { code, name });
-  }, []);
+  }, [startPending]);
 
   const startGame           = useCallback(() => { socketRef.current?.emit("start-game"); }, []);
   const kickPlayer          = useCallback((id: string) => { socketRef.current?.emit("kick-player", { targetId: id }); }, []);
@@ -593,7 +644,10 @@ export default function App() {
     try { token = localStorage.getItem("mafia-token"); } catch { token = null; }
     if (!token) return;
     socket.auth = { token };
-    if (!socket.connected) socket.connect();
+    if (!socket.connected) {
+      setConnStatus("connecting");
+      socket.connect();
+    }
   }, [isAuthenticated]);
 
 
@@ -612,6 +666,11 @@ export default function App() {
 
   return (
     <div className="game-shell min-h-screen text-gray-100 relative z-0">
+      {!booted && <LoadingScreen onDone={handleBooted} />}
+      {booted && isAuthenticated && <ConnectionIndicator status={connStatus} />}
+      {booted && rejoining && (
+        <BusyOverlay title="Rejoining your game…" detail="Putting you back in your seat. This can take a moment on a slow connection." />
+      )}
       <Atmosphere phase={phase} />
       {phase === "home" && (
         <Home
@@ -619,10 +678,11 @@ export default function App() {
           key={isAuthenticated ? "signed-in" : "signed-out"}
           onCreateRoom={createRoom}
           onJoinRoom={joinRoom}
+          roomPending={roomPending}
           onAuthenticated={() => {
             setIsAuthenticated(true);
             unlockAudio();
-    preloadGunshot();
+            preloadGunshot();
             if (!isMuted()) startAmbientLoop();
           }}
           onLogout={() => {
@@ -643,6 +703,7 @@ export default function App() {
           onKickPlayer={kickPlayer}
           onReportPlayer={reportPlayer}
           onTimerSettingsChange={updateTimerSettings}
+          onLeave={leaveRoom}
         />
       )}
 
@@ -708,6 +769,7 @@ export default function App() {
           mySocketId={mySocketId}
           isHost={isHost}
           onPlayAgain={playAgain}
+          onLeave={leaveRoom}
         />
       )}
 

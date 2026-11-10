@@ -6,10 +6,13 @@ import { AuthError, clearSession, postAuth, saveSession, type AuthUser } from "@
 import { requestAppExit, useBackHandler } from "@/lib/native-bridge";
 import { takeInviteCode } from "@/lib/invite";
 import { ProfileScreen, ProfileStrip, useProfile } from "@/components/profile/Profile";
+import { GoldSpinner } from "@/components/Loaders";
 
 type Props = {
   onCreateRoom: (name: string) => void;
   onJoinRoom: (code: string, name: string) => void;
+  /** Set while a create/join request is waiting for the server. */
+  roomPending?: "create" | "join" | null;
   onAuthenticated: () => void;
   onLogout?: () => void;
 };
@@ -17,10 +20,10 @@ type Props = {
 type View = "main" | "create" | "join" | "profile";
 
 const inputCls =
-  "w-full min-h-[52px] px-4 rounded-xl bg-black/55 ring-1 ring-white/12 text-white placeholder-gray-600 text-base focus:outline-none focus:ring-2 focus:ring-amber-500/70 transition-shadow";
+  "w-full min-h-[52px] px-4 rounded-xl bg-black/55 ring-1 ring-white/12 text-white placeholder:text-gray-400/70 text-base focus:outline-none focus:ring-2 focus:ring-amber-500/70 transition-shadow";
 
 const primaryBtn =
-  "w-full min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-lg font-semibold transition-colors shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)]";
+  "w-full min-h-[52px] rounded-xl btn-gold text-lg font-semibold";
 
 const ghostBtn =
   "w-full min-h-[52px] rounded-xl bg-transparent border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 text-base transition-colors";
@@ -38,7 +41,7 @@ function readToken(): string | null {
   try { return localStorage.getItem("mafia-token"); } catch { return null; }
 }
 
-export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogout }: Props) {
+export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogout, roomPending = null }: Props) {
   const [user, setUser] = useState<AuthUser | null>(readUser);
   // Opened from an invite link (/join/ABCDE): go straight to Join with the code filled in.
   const [inviteCode] = useState(takeInviteCode);
@@ -52,7 +55,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
   const [deletePass, setDeletePass] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   // Refetch stats each time you come back to the main screen (e.g. after a match).
-  const profile = useProfile(user ? readToken() : null, `${user?.id}:${view === "main" || view === "profile"}`);
+  const profile = useProfile(user ? readToken() : null, `${user?.id}:${view}`);
 
   // Android back: close the innermost open panel; on the root screen, exit the app.
   useBackHandler(() => {
@@ -149,7 +152,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
           <div className="game-panel bg-black/50! ring-1 ring-white/10 shadow-2xl shadow-black/50 px-5 pt-6 pb-5">
             <header className="text-center mb-5">
               <h1 className="font-display text-5xl font-bold tracking-tight mb-2 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
-                <span className="bg-gradient-to-b from-amber-200 to-amber-600 bg-clip-text text-transparent">
+                <span className="text-gold-title">
                   Mafia
                 </span>
               </h1>
@@ -235,6 +238,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
             failed={profile.failed}
             onBack={() => goTo("main")}
             onLogout={() => void handleLogout()}
+            onReload={profile.reload}
           />
         )}
 
@@ -247,7 +251,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
             <form onSubmit={(e) => { e.preventDefault(); void handleDeleteAccount(); }}>
               <input
                 className={inputCls + " mb-2"}
-                placeholder="Confirm your password"
+                placeholder="Your password"
                 type="password"
                 autoComplete="current-password"
                 value={deletePass}
@@ -288,14 +292,17 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                   type="text"
                   value={name}
                   onChange={(e) => { setName(e.target.value); setError(""); }}
-                  placeholder="e.g. Ghost"
+                  placeholder="Ghost"
                   maxLength={24}
                   autoComplete="nickname"
                   className={inputCls}
                 />
               </label>
               {error && <p className="text-red-400 text-sm">{error}</p>}
-              <button type="submit" className={`${primaryBtn} cursor-pointer`}>Create Room</button>
+              <button type="submit" disabled={roomPending !== null} className={`${primaryBtn} cursor-pointer flex items-center justify-center gap-2`}>
+                {roomPending === "create" && <GoldSpinner size={18} tone="ink" />}
+                {roomPending === "create" ? "Creating room…" : "Create Room"}
+              </button>
               <button type="button" onClick={() => goTo("main")} className={`${ghostBtn} cursor-pointer`}>Back</button>
             </form>
           </div>
@@ -315,7 +322,7 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                   type="text"
                   value={code}
                   onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(""); }}
-                  placeholder="e.g. AB3X7"
+                  placeholder="AB3X7"
                   maxLength={5}
                   autoCapitalize="characters"
                   autoComplete="off"
@@ -329,14 +336,17 @@ export default function Home({ onCreateRoom, onJoinRoom, onAuthenticated, onLogo
                   type="text"
                   value={name}
                   onChange={(e) => { setName(e.target.value); setError(""); }}
-                  placeholder="e.g. Ghost"
+                  placeholder="Ghost"
                   maxLength={24}
                   autoComplete="nickname"
                   className={inputCls}
                 />
               </label>
               {error && <p className="text-red-400 text-sm">{error}</p>}
-              <button type="submit" className={`${primaryBtn} cursor-pointer`}>Join Room</button>
+              <button type="submit" disabled={roomPending !== null} className={`${primaryBtn} cursor-pointer flex items-center justify-center gap-2`}>
+                {roomPending === "join" && <GoldSpinner size={18} tone="ink" />}
+                {roomPending === "join" ? "Joining room…" : "Join Room"}
+              </button>
               <button type="button" onClick={() => { goTo("main"); setCode(""); }} className={`${ghostBtn} cursor-pointer`}>Back</button>
             </form>
           </div>

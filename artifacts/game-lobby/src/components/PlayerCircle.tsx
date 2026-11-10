@@ -33,16 +33,16 @@ const SELECT_SHADOW: Record<ActionMode, string> = {
   "none":                   "",
   "mafia-kill":             "0 0 14px rgba(239,68,68,0.55)",
   "doctor-protect":         "0 0 14px rgba(52,211,153,0.45)",
-  "detective-investigate":  "0 0 14px rgba(251,191,36,0.45)",
-  "day-vote":               "0 0 14px rgba(251,191,36,0.45)",
+  "detective-investigate":  "0 0 14px rgba(211,169,71,0.45)",
+  "day-vote":               "0 0 14px rgba(211,169,71,0.45)",
 };
 
 const SELECT_BORDER: Record<ActionMode, string> = {
   "none":                   "transparent",
   "mafia-kill":             "#ef4444",
   "doctor-protect":         "#34d399",
-  "detective-investigate":  "#fbbf24",
-  "day-vote":               "#fbbf24",
+  "detective-investigate":  "#d3a947",
+  "day-vote":               "#d3a947",
 };
 
 const FELLOW_SHADOW = "0 0 10px rgba(239,68,68,0.3)";
@@ -205,7 +205,7 @@ function PlayerSeat({
               pointerEvents: "none",
             }}
           >
-            <span style={{ color: "#4b5563", fontSize: Math.round(16 * scale), lineHeight: 1 }}>✕</span>
+            <span style={{ color: "#5c574e", fontSize: Math.round(16 * scale), lineHeight: 1 }}>✕</span>
           </div>
         )}
 
@@ -247,7 +247,7 @@ function PlayerSeat({
         style={{
           fontSize: nameFontSize,
           fontWeight: 600,
-          color: isMe ? "#f3f4f6" : eliminated && !isGameOver ? "#4b5563" : "#9ca3af",
+          color: isMe ? "#f3f4f6" : eliminated && !isGameOver ? "#5c574e" : "#9c968a",
           maxWidth: cardW,
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -260,7 +260,7 @@ function PlayerSeat({
       </p>
 
       {!player.connected && !eliminated && (
-        <p style={{ fontSize: offlineFontSize, color: "#6b7280", lineHeight: 1, marginTop: -2 }}>
+        <p style={{ fontSize: offlineFontSize, color: "#7a7469", lineHeight: 1, marginTop: -2 }}>
           offline
         </p>
       )}

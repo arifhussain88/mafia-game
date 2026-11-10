@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   BackHandler,
   Linking,
   Platform,
@@ -56,6 +55,13 @@ const GAME_ORIGIN = originOf(GAME_URL) ?? GAME_URL.toLowerCase();
 
 const BG = '#0b0b0f';
 const ACCENT = '#d97706';
+const GOLD_LIGHT = '#f0d995';
+/**
+ * Share of the overall progress bar covered by the page download (native bar).
+ * The game's own splash continues from here for art, fonts and role cards.
+ */
+const NATIVE_SHARE = 0.35;
+const BOOT_SCRIPT = `window.__MAFIA_APP_BOOT = ${NATIVE_SHARE}; true;`;
 const BRAND = (Constants.expoConfig?.name ?? 'Mafia').toUpperCase();
 
 /** Exact origin match: "https://game.example.com.evil.io" must not pass for the game. */
@@ -75,6 +81,9 @@ const DISPATCH_BACK = `window.dispatchEvent(new Event('mafia-back')); true;`;
 export default function App() {
   const webRef = useRef<WebViewRef>(null);
   const [loading, setLoading] = useState(true);
+  // Real page-load progress (HTML + JS bundle) reported by the WebView, 0..1.
+  const [loadProgress, setLoadProgress] = useState(0);
+  const handoffTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [failed, setFailed] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const failedRef = useRef<string | null>(null);
@@ -95,6 +104,11 @@ export default function App() {
     try {
       const msg = JSON.parse(event.nativeEvent.data) as { type?: string; message?: string };
       if (msg.type === 'exit') BackHandler.exitApp();
+      // The game's own splash is up and continues the same progress bar: hand over.
+      if (msg.type === 'splash') {
+        clearTimeout(handoffTimer.current);
+        setLoading(false);
+      }
       // Invite friends: the system share sheet (WhatsApp, SMS, etc.). Nothing is sent unless the player picks an app.
       if (msg.type === 'share' && typeof msg.message === 'string') {
         void Share.share({ message: msg.message.slice(0, 500) }).catch(() => {});
@@ -115,6 +129,7 @@ export default function App() {
 
   const retry = useCallback(() => {
     setFailed(null);
+    setLoadProgress(0);
     setLoading(true);
     setReloadKey((k) => k + 1);
   }, []);
@@ -160,7 +175,13 @@ export default function App() {
             applicationNameForUserAgent="MafiaTownApp/1.0"
             onShouldStartLoadWithRequest={onShouldStart}
             onMessage={onMessage}
-            onLoadEnd={() => setLoading(false)}
+            injectedJavaScriptBeforeContentLoaded={BOOT_SCRIPT}
+            onLoadProgress={(e) => setLoadProgress(e.nativeEvent.progress)}
+            onLoadEnd={() => {
+              // Normally the page says "splash" first; this is only a fallback.
+              clearTimeout(handoffTimer.current);
+              handoffTimer.current = setTimeout(() => setLoading(false), 2500);
+            }}
             onError={(e: WebViewErrorEvent) => setFailed(e.nativeEvent.description || 'Network error')}
             onHttpError={(e: WebViewHttpErrorEvent) => {
               if (e.nativeEvent.statusCode >= 500 && isGameUrl(e.nativeEvent.url)) {
@@ -175,9 +196,16 @@ export default function App() {
         )}
 
         {loading && !failed ? (
-          <View style={styles.loader} pointerEvents="none">
+          <View style={styles.loader} pointerEvents="none" accessibilityRole="progressbar">
             <Text style={styles.brand}>{BRAND}</Text>
-            <ActivityIndicator size="large" color={ACCENT} />
+            <Text style={styles.tagline}>TOWN HAS A PROBLEM</Text>
+            <View style={styles.track}>
+              <View style={[styles.fill, { width: `${Math.max(3, Math.round(loadProgress * NATIVE_SHARE * 100))}%` }]} />
+            </View>
+            <View style={styles.barRow}>
+              <Text style={styles.barLabel}>Connecting to the town…</Text>
+              <Text style={styles.barPct}>{Math.round(loadProgress * NATIVE_SHARE * 100)}%</Text>
+            </View>
           </View>
         ) : null}
       </SafeAreaView>
@@ -192,10 +220,18 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: BG,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: '16%',
     gap: 24,
   },
-  brand: { color: '#fbbf24', fontSize: 32, fontWeight: '800', letterSpacing: 4 },
+  brand: { color: '#f3c45c', fontSize: 52, fontWeight: '800', fontFamily: 'serif' },
+  tagline: { color: 'rgba(240,217,149,0.8)', fontSize: 11, letterSpacing: 3, marginTop: -16 },
+  track: { width: 240, height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(240,217,149,0.15)', overflow: 'hidden', marginTop: 24 },
+  // Midpoint of the title gradient (#fde68a -> #d97706); RN views have no gradients.
+  fill: { height: '100%', borderRadius: 4, backgroundColor: '#ebae48' },
+  barRow: { width: 240, flexDirection: 'row', justifyContent: 'space-between', marginTop: -12 },
+  barLabel: { color: 'rgba(248,236,201,0.7)', fontSize: 12 },
+  barPct: { color: GOLD_LIGHT, fontSize: 12, fontVariant: ['tabular-nums'] },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
   title: { color: '#fff', fontSize: 22, fontWeight: '700', textAlign: 'center' },
   body: { color: '#9ca3af', fontSize: 15, textAlign: 'center' },

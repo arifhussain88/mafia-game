@@ -39,7 +39,7 @@ export default function LeaveMatchButton({ onConfirm, open: openProp, onOpenChan
           <LogOut className="h-5 w-5" strokeWidth={2} aria-hidden />
         </button>
       </AlertDialogTrigger>
-      <AlertDialogContent className="game-panel border-gray-800 bg-[#0c0c12] text-gray-200">
+      <AlertDialogContent className="game-panel border-gray-800 bg-[#121110] text-gray-200">
         <AlertDialogHeader>
           <AlertDialogTitle className="font-display text-amber-100">Leave this match?</AlertDialogTitle>
           <AlertDialogDescription className="text-gray-400">

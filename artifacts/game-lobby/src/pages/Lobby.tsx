@@ -69,6 +69,8 @@ type Props = {
   onKickPlayer: (targetId: string) => void;
   onReportPlayer: (targetId: string, reason: string) => void;
   onTimerSettingsChange: (next: TimerSettings) => void;
+  /** Leave the room and go back to Home (the host hands over to the next player). */
+  onLeave: () => void;
 };
 
 function TimerRow({
@@ -130,6 +132,7 @@ export default function Lobby({
   onKickPlayer,
   onReportPlayer,
   onTimerSettingsChange,
+  onLeave,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [reportTarget, setReportTarget] = useState<Player | null>(null);
@@ -199,7 +202,7 @@ export default function Lobby({
           <button
             type="button"
             onClick={() => void handleInvite()}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 min-h-[52px] rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-base font-semibold transition-colors cursor-pointer shadow-[0_8px_24px_-8px_rgba(217,119,6,0.6)]"
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 min-h-[52px] rounded-xl btn-gold text-base font-semibold cursor-pointer"
           >
             <Share2 className="h-5 w-5" aria-hidden />
             {inviteNote ?? "Invite friends"}
@@ -294,7 +297,7 @@ export default function Lobby({
               disabled={!canStart}
               className={`w-full min-h-[56px] rounded-xl text-white text-lg font-semibold transition-colors ${
                 canStart
-                  ? "bg-amber-600 hover:bg-amber-500 active:bg-amber-700 cursor-pointer"
+                  ? "btn-gold cursor-pointer"
                   : "bg-gray-800 cursor-not-allowed text-gray-600 border border-gray-800"
               }`}
             >
@@ -321,6 +324,13 @@ export default function Lobby({
           className="w-full min-h-[52px] mt-4 rounded-xl bg-transparent border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 text-base transition-colors cursor-pointer"
         >
           How to play
+        </button>
+        <button
+          type="button"
+          onClick={onLeave}
+          className="w-full min-h-[48px] mt-3 rounded-xl text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+        >
+          Leave room
         </button>
       </div>
       <HowToPlay open={howToPlayOpen} onOpenChange={setHowToPlayOpen} />
