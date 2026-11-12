@@ -245,30 +245,9 @@ sudo systemctl restart mafia-wars
 
 ## Moderation: reports and bans
 
-Players can report a player (lobby flag icon) or a chat message. Reports are stored in Neon (`reports` table) and purged after 12 months, as the privacy policy promises. The admin API is **off unless `ADMIN_TOKEN` is set** on the VM. Without it, or with a wrong token, every `/api/admin` URL returns 404.
+Players can report a player or a chat message. Reports are stored in Neon. The admin API is off unless `ADMIN_TOKEN` is set on the VM.
 
-One-time, on the VM (use a long random token, at least 24 characters):
-
-```bash
-echo "ADMIN_TOKEN=$(openssl rand -hex 24)" | sudo tee -a /etc/mafia-wars.env
-sudo systemctl restart mafia-wars
-sudo grep ADMIN_TOKEN /etc/mafia-wars.env   # copy it into your password manager
-```
-
-Then, from your PC (PowerShell; put the token in `$t` first):
-
-```powershell
-$h = @{ Authorization = "Bearer $t" }
-Invoke-RestMethod -Headers $h http://141.148.204.30/api/admin/reports                 # open reports
-Invoke-RestMethod -Headers $h "http://141.148.204.30/api/admin/reports?status=all"
-Invoke-RestMethod -Method Post -Headers $h -ContentType application/json -Body '{"status":"resolved"}' http://141.148.204.30/api/admin/reports/<id>/status
-Invoke-RestMethod -Method Post -Headers $h -ContentType application/json -Body '{"email":"player@example.com","reason":"Harassment"}' http://141.148.204.30/api/admin/ban
-Invoke-RestMethod -Method Post -Headers $h -ContentType application/json -Body '{"email":"player@example.com"}' http://141.148.204.30/api/admin/unban
-```
-
-A ban signs the player out everywhere right away. They can't log in again until unbanned, and they're told how to appeal (email). Use `https://<game-host>` instead of the IP once HTTPS is live.
-
-New tables and columns are created automatically when the server starts (`ensureSchema` in `lib/db`), so deploys need no manual database steps.
+The token setup, and every way to see reports, ban and unban (Neon dashboard, PowerShell, the planned admin page), are in **[MODERATION.md](MODERATION.md)**.
 
 ## D. Files in this directory
 
@@ -282,6 +261,7 @@ New tables and columns are created automatically when the server starts (`ensure
 | `game-host` | one line: the public hostname for HTTPS (empty = HTTP on `:80`) |
 | `pack-release.sh` | Linux/CI version of `pack-release.ps1` (same tarball) |
 | `smoke-test-release.sh` | boots the tarball in production mode and checks the API, game and legal pages |
+| `MODERATION.md` | how to set the admin token, see reports, ban and unban |
 | `.gitignore` | ignores `release/` and `*.tar` |
 
 ---
