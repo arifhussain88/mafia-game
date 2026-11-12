@@ -3,6 +3,7 @@ import {
   BackHandler,
   Linking,
   Platform,
+  Image,
   Pressable,
   Share,
   StyleSheet,
@@ -62,7 +63,8 @@ const GOLD_LIGHT = '#f0d995';
  */
 const NATIVE_SHARE = 0.35;
 const BOOT_SCRIPT = `window.__MAFIA_APP_BOOT = ${NATIVE_SHARE}; true;`;
-const BRAND = (Constants.expoConfig?.name ?? 'Mafia').toUpperCase();
+// Key art with the title painted in; the real progress bar sits where the art left room.
+const LOADING_ART = require('./assets/loading-art.jpg');
 
 /** Exact origin match: "https://game.example.com.evil.io" must not pass for the game. */
 function isGameUrl(url: string) {
@@ -196,9 +198,17 @@ export default function App() {
         )}
 
         {loading && !failed ? (
-          <View style={styles.loader} pointerEvents="none" accessibilityRole="progressbar">
-            <Text style={styles.brand}>{BRAND}</Text>
-            <Text style={styles.tagline}>TOWN HAS A PROBLEM</Text>
+          <View
+            style={styles.loader}
+            pointerEvents="none"
+            accessibilityRole="progressbar"
+            accessibilityLabel="Loading the game"
+          >
+            {/* Blurred, darkened copy fills whatever the full picture doesn't cover. */}
+            <Image source={LOADING_ART} resizeMode="cover" blurRadius={18} style={styles.backdrop} />
+            <View style={styles.dim} />
+            {/* The whole key art, never cropped, so the painted title stays readable. */}
+            <Image source={LOADING_ART} resizeMode="contain" style={styles.art} />
             <View style={styles.track}>
               <View style={[styles.fill, { width: `${Math.max(3, Math.round(loadProgress * NATIVE_SHARE * 100))}%` }]} />
             </View>
@@ -220,16 +230,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: BG,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: '16%',
-    gap: 24,
+    justifyContent: 'center',
+    gap: 10,
   },
-  brand: { color: '#f3c45c', fontSize: 52, fontWeight: '800', fontFamily: 'serif' },
-  tagline: { color: 'rgba(240,217,149,0.8)', fontSize: 11, letterSpacing: 3, marginTop: -16 },
-  track: { width: 240, height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(240,217,149,0.15)', overflow: 'hidden', marginTop: 24 },
+  backdrop: { ...StyleSheet.absoluteFill, width: '100%', height: '100%', transform: [{ scale: 1.1 }] },
+  dim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(7,8,12,0.6)' },
+  // Loading art is 1080x1920.
+  art: { width: '100%', maxHeight: '84%', aspectRatio: 1080 / 1920 },
+  track: { width: '74%', height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(240,217,149,0.15)', overflow: 'hidden' },
   // Midpoint of the title gradient (#fde68a -> #d97706); RN views have no gradients.
   fill: { height: '100%', borderRadius: 4, backgroundColor: '#ebae48' },
-  barRow: { width: 240, flexDirection: 'row', justifyContent: 'space-between', marginTop: -12 },
+  barRow: { width: '74%', flexDirection: 'row', justifyContent: 'space-between' },
   barLabel: { color: 'rgba(248,236,201,0.7)', fontSize: 12 },
   barPct: { color: GOLD_LIGHT, fontSize: 12, fontVariant: ['tabular-nums'] },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },

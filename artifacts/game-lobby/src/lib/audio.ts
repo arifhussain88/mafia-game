@@ -162,88 +162,93 @@ export function playChatPing(): void {
 export type KeyStroke = {
   /** Seconds after the typing starts. */
   at: number;
-  /** "gunshot" marks the Mafia kill, placed on the same clock as the typing. */
-  kind: "key" | "space" | "enter" | "gunshot";
+  kind: KeyKind;
 };
 
-let noiseBuffer: AudioBuffer | null = null;
-function getNoise(ctx: AudioContext): AudioBuffer {
-  if (noiseBuffer && noiseBuffer.sampleRate === ctx.sampleRate) return noiseBuffer;
-  const len = Math.floor(ctx.sampleRate * 0.25);
-  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-  noiseBuffer = buf;
+/* ---------------- Mechanical keyboard ----------------
+ * Each key sound is rendered once into a short buffer (a few variants per key
+ * type) and replayed with tiny pitch/level changes. Built from damped
+ * resonances, like a real keycap and switch:
+ *   - a sharp plastic "tick" (high modes, a few ms),
+ *   - the "thock" as the key bottoms out (low body resonance),
+ *   - a quieter release click as the key springs back.
+ * Synthesized in-browser; no audio asset.
+ */
+type KeyKind = "key" | "space" | "enter";
+const keyVoices = new Map<string, AudioBuffer[]>();
+
+function renderKey(ctx: AudioContext, kind: KeyKind, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate;
+  const seconds = kind === "key" ? 0.09 : 0.14;
+  const len = Math.floor(sr * seconds);
+  const buf = ctx.createBuffer(1, len, sr);
+  const d = buf.getChannelData(0);
+  // Stable per-variant detune of about +/-6%.
+  const rnd = (n: number) => 1 + Math.sin(seed * 12.9898 + n * 78.233) * 0.06;
+
+  const tick: number[][] = kind === "key"
+    ? [[2100, 0.009, 0.55], [3300, 0.006, 0.4], [4700, 0.004, 0.28], [6800, 0.0025, 0.15]]
+    : [[1500, 0.012, 0.5], [2400, 0.008, 0.35], [3900, 0.005, 0.22]];
+  const body: number[][] = kind === "key" ? [[210, 0.016, 0.55], [430, 0.009, 0.25]]
+    : kind === "space" ? [[135, 0.03, 0.7], [290, 0.016, 0.3]]
+    : [[160, 0.026, 0.8], [340, 0.014, 0.35]];
+  const releaseAt = (kind === "key" ? 0.042 : 0.07) * rnd(9);
+  const release: number[][] = kind === "key"
+    ? [[3900, 0.004, 0.16], [5600, 0.0025, 0.1]]
+    : [[2800, 0.006, 0.18], [4200, 0.004, 0.1]];
+
+  let lp = 0;
+  for (let i = 0; i < len; i++) {
+    const t = i / sr;
+    let s = 0;
+    // Contact transient: about 1 ms of bright noise.
+    const n = Math.random() * 2 - 1;
+    s += (n - lp) * Math.exp(-t / 0.0007) * 0.6;
+    lp += 0.2 * (n - lp);
+    tick.forEach(([f, tau, amp], k) => { s += Math.sin(2 * Math.PI * f * rnd(k) * t) * Math.exp(-t / tau) * amp; });
+    const tb = t - 0.004; // the bottom-out lands a few ms after the tick
+    if (tb > 0) {
+      body.forEach(([f, tau, amp], k) => { s += Math.sin(2 * Math.PI * f * rnd(k + 5) * tb) * Math.exp(-tb / tau) * amp; });
+      if (kind !== "key") s += (Math.random() * 2 - 1) * Math.exp(-tb / 0.012) * 0.08; // stabiliser rattle
+    }
+    const tr = t - releaseAt;
+    if (tr > 0) release.forEach(([f, tau, amp], k) => { s += Math.sin(2 * Math.PI * f * rnd(k + 11) * tr) * Math.exp(-tr / tau) * amp; });
+    d[i] = s;
+  }
+  let peak = 0;
+  for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(d[i]));
+  const fade = Math.max(1, Math.floor(sr * 0.0004));
+  for (let i = 0; i < len; i++) d[i] = (d[i] / (peak || 1)) * 0.9 * (i < fade ? i / fade : 1);
   return buf;
 }
 
-/** Short filtered noise burst: the "tick" of a switch or the keycap hitting the plate. */
-function noiseBurst(
-  ctx: AudioContext,
-  out: AudioNode,
-  t: number,
-  opts: { freq: number; q: number; peak: number; decay: number },
-  nodes: AudioScheduledSourceNode[],
-) {
+function keyVoice(ctx: AudioContext, kind: KeyKind): AudioBuffer {
+  const id = kind + "@" + ctx.sampleRate;
+  let voices = keyVoices.get(id);
+  if (!voices) {
+    voices = Array.from({ length: kind === "key" ? 6 : 3 }, (_, v) => renderKey(ctx, kind, v + 1));
+    keyVoices.set(id, voices);
+  }
+  return voices[Math.floor(Math.random() * voices.length)];
+}
+
+/** One key press at AudioContext time t. */
+function keyPress(ctx: AudioContext, out: AudioNode, t: number, kind: KeyKind, nodes: AudioScheduledSourceNode[]) {
   const src = ctx.createBufferSource();
-  src.buffer = getNoise(ctx);
-  const bp = ctx.createBiquadFilter();
-  bp.type = "bandpass";
-  bp.frequency.setValueAtTime(opts.freq, t);
-  bp.Q.setValueAtTime(opts.q, t);
-  const env = ctx.createGain();
-  env.gain.setValueAtTime(0.0001, t);
-  env.gain.exponentialRampToValueAtTime(opts.peak, t + 0.0012);
-  env.gain.exponentialRampToValueAtTime(0.0001, t + opts.decay);
-  src.connect(bp);
-  bp.connect(env);
-  env.connect(out);
-  // Random offset into the shared buffer so no two clicks are identical.
-  src.start(t, Math.random() * 0.2, opts.decay + 0.01);
+  src.buffer = keyVoice(ctx, kind);
+  src.playbackRate.setValueAtTime(0.97 + Math.random() * 0.06, t);
+  const g = ctx.createGain();
+  const level = kind === "key" ? 0.55 : kind === "space" ? 0.6 : 0.8;
+  g.gain.setValueAtTime(level * (0.82 + Math.random() * 0.3), t);
+  src.connect(g).connect(out);
+  src.start(t);
   nodes.push(src);
 }
 
-/** Low, fast-decaying body resonance: the "thock" when the key bottoms out. */
-function thock(
-  ctx: AudioContext,
-  out: AudioNode,
-  t: number,
-  opts: { freq: number; peak: number; decay: number },
-  nodes: AudioScheduledSourceNode[],
-) {
-  const osc = ctx.createOscillator();
-  osc.type = "triangle";
-  osc.frequency.setValueAtTime(opts.freq, t);
-  osc.frequency.exponentialRampToValueAtTime(opts.freq * 0.6, t + opts.decay);
-  const env = ctx.createGain();
-  env.gain.setValueAtTime(0.0001, t);
-  env.gain.exponentialRampToValueAtTime(opts.peak, t + 0.002);
-  env.gain.exponentialRampToValueAtTime(0.0001, t + opts.decay);
-  osc.connect(env);
-  env.connect(out);
-  osc.start(t);
-  osc.stop(t + opts.decay + 0.01);
-  nodes.push(osc);
-}
-
-/** One mechanical key press: switch click + keycap thock + a softer release click. */
-function keyPress(ctx: AudioContext, out: AudioNode, t: number, kind: KeyStroke["kind"], nodes: AudioScheduledSourceNode[]) {
-  const vel = 0.8 + Math.random() * 0.35; // human-ish variation in how hard each key is hit
-  if (kind === "key") {
-    noiseBurst(ctx, out, t, { freq: 3400 + Math.random() * 1600, q: 1.4, peak: 0.55 * vel, decay: 0.018 }, nodes);
-    thock(ctx, out, t + 0.003, { freq: 230 + Math.random() * 70, peak: 0.32 * vel, decay: 0.04 }, nodes);
-    noiseBurst(ctx, out, t + 0.03 + Math.random() * 0.012, { freq: 5200, q: 2, peak: 0.12 * vel, decay: 0.01 }, nodes);
-  } else if (kind === "space") {
-    // Space bar: longer stabiliser rattle, deeper body.
-    noiseBurst(ctx, out, t, { freq: 1900 + Math.random() * 400, q: 0.9, peak: 0.45 * vel, decay: 0.03 }, nodes);
-    thock(ctx, out, t + 0.004, { freq: 140 + Math.random() * 25, peak: 0.42 * vel, decay: 0.07 }, nodes);
-    noiseBurst(ctx, out, t + 0.045, { freq: 3000, q: 1.2, peak: 0.14 * vel, decay: 0.015 }, nodes);
-  } else {
-    // Enter: the heavy, satisfying one at the end of a line.
-    noiseBurst(ctx, out, t, { freq: 2600, q: 1.1, peak: 0.7, decay: 0.028 }, nodes);
-    thock(ctx, out, t + 0.004, { freq: 170, peak: 0.55, decay: 0.08 }, nodes);
-    noiseBurst(ctx, out, t + 0.07, { freq: 4200, q: 1.6, peak: 0.18, decay: 0.014 }, nodes);
-  }
+/** How long the device takes to actually play a scheduled sound (Android can be 100 ms or more). */
+function outputDelay(ctx: AudioContext): number {
+  const c = ctx as AudioContext & { outputLatency?: number };
+  return Math.min(0.25, (c.outputLatency || 0) + (ctx.baseLatency || 0));
 }
 
 /**
@@ -260,9 +265,11 @@ export function scheduleKeyStrokes(strokes: KeyStroke[], startedAt: number): () 
 
   withAudio((ctx, now, level) => {
     if (cancelled) return;
-    const lag = (performance.now() - startedAt) / 1000;
+    // Start each sound early by the device's output delay, so the key is
+    // heard the moment its letter appears, not a beat later.
+    const lag = (performance.now() - startedAt) / 1000 + outputDelay(ctx);
     master = ctx.createGain();
-    master.gain.setValueAtTime(0.5 * level, now);
+    master.gain.setValueAtTime(0.45 * level, now);
     // Gentle limiter: overlapping fast keystrokes never clip.
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.setValueAtTime(-14, now);
@@ -271,9 +278,8 @@ export function scheduleKeyStrokes(strokes: KeyStroke[], startedAt: number): () 
     limiter.connect(ctx.destination);
     for (const s of strokes) {
       const at = s.at - lag;
-      if (at < -0.005) continue; // already shown on screen; don't play late
-      if (s.kind === "gunshot") playGunshotAt(ctx, now + Math.max(0, at), level, nodes);
-      else keyPress(ctx, master, now + Math.max(0, at), s.kind, nodes);
+      if (at < -0.03) continue; // already shown on screen; don't play late
+      keyPress(ctx, master, now + Math.max(0, at), s.kind, nodes);
     }
   });
 
@@ -374,55 +380,74 @@ function hitBus(ctx: AudioContext, t: number, level: number, wet: number) {
   return input;
 }
 
-/** Synthesized pistol shot: muzzle crack, chest-hitting boom, and a street echo. */
-function synthGunshot(ctx: AudioContext, t: number, out: AudioNode, nodes?: AudioScheduledSourceNode[]): void {
-  // 1. Crack: very short bright noise transient.
-  const crack = ctx.createBufferSource();
-  crack.buffer = decayingNoise(ctx, 0.05, 4);
-  const crackHp = ctx.createBiquadFilter();
-  crackHp.type = "highpass";
-  crackHp.frequency.setValueAtTime(1800, t);
-  const crackEnv = ctx.createGain();
-  crackEnv.gain.setValueAtTime(0.0001, t);
-  crackEnv.gain.exponentialRampToValueAtTime(1.4, t + 0.0008);
-  crackEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
-  crack.connect(crackHp).connect(crackEnv).connect(out);
-  crack.start(t);
+let gunshotVoice: AudioBuffer | null = null;
 
-  // 2. Blast: broadband noise swept down from bright to dull, with saturation for punch.
-  const blast = ctx.createBufferSource();
-  blast.buffer = decayingNoise(ctx, 0.35, 2.2);
-  const blastLp = ctx.createBiquadFilter();
-  blastLp.type = "lowpass";
-  blastLp.frequency.setValueAtTime(6500, t);
-  blastLp.frequency.exponentialRampToValueAtTime(380, t + 0.25);
-  const shaper = ctx.createWaveShaper();
-  const curve = new Float32Array(1024);
-  for (let i = 0; i < curve.length; i++) {
-    const x = (i / (curve.length - 1)) * 2 - 1;
-    curve[i] = Math.tanh(3 * x);
+/**
+ * Synthesized pistol shot, rendered once: a supersonic crack, the muzzle
+ * blast, a low boom you feel, and two slap-back echoes off the buildings.
+ */
+function renderGunshot(ctx: AudioContext): AudioBuffer {
+  if (gunshotVoice && gunshotVoice.sampleRate === ctx.sampleRate) return gunshotVoice;
+  const sr = ctx.sampleRate;
+  const len = Math.floor(sr * 1.1);
+  const dry = new Float32Array(len);
+  let lp1 = 0;
+  let lp2 = 0;
+  let hpPrev = 0;
+  let phase = 0;
+  for (let i = 0; i < len; i++) {
+    const t = i / sr;
+    const n = Math.random() * 2 - 1;
+    // Crack: a 1-2 ms bright snap with a sharp leading edge.
+    const hp = n - hpPrev;
+    hpPrev = n;
+    let s = hp * Math.exp(-t / 0.0016) * 1.6;
+    if (t < 0.0008) s += 1.2 * (1 - t / 0.0004);
+    // Blast: noise that starts bright and gets duller as it decays.
+    const cutoff = 0.08 + 0.5 * Math.exp(-t / 0.02);
+    lp1 += cutoff * (n - lp1);
+    lp2 += cutoff * (lp1 - lp2);
+    s += lp2 * Math.exp(-t / 0.07) * 3.2;
+    // Mid "pop" of the muzzle.
+    s += Math.sin(2 * Math.PI * 950 * t) * Math.exp(-t / 0.01) * 0.35;
+    // Boom: a falling low thump.
+    const f = 42 + 80 * Math.exp(-t / 0.05);
+    phase += (2 * Math.PI * f) / sr;
+    s += Math.sin(phase) * Math.exp(-t / 0.13) * 1.1 * Math.min(1, t / 0.002);
+    dry[i] = s;
   }
-  shaper.curve = curve;
-  const blastEnv = ctx.createGain();
-  blastEnv.gain.setValueAtTime(0.0001, t);
-  blastEnv.gain.exponentialRampToValueAtTime(1.0, t + 0.002);
-  blastEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
-  blast.connect(blastLp).connect(shaper).connect(blastEnv).connect(out);
-  blast.start(t);
+  const out = Float32Array.from(dry);
+  // Two street echoes, darker and quieter each time.
+  const echo = (delay: number, gain: number, smooth: number) => {
+    const off = Math.floor(sr * delay);
+    let y = 0;
+    for (let i = off; i < len; i++) {
+      y += smooth * (dry[i - off] - y);
+      out[i] += y * gain;
+    }
+  };
+  echo(0.19, 0.32, 0.18);
+  echo(0.43, 0.16, 0.1);
+  // Saturate for loudness without harsh clipping, then normalise.
+  let peak = 0;
+  for (let i = 0; i < len; i++) {
+    out[i] = Math.tanh(out[i] * 1.6);
+    peak = Math.max(peak, Math.abs(out[i]));
+  }
+  const buf = ctx.createBuffer(1, len, sr);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (out[i] / (peak || 1)) * 0.95;
+  gunshotVoice = buf;
+  return buf;
+}
 
-  // 3. Boom: low sine thump with a pitch drop (the "felt" part).
-  const boom = ctx.createOscillator();
-  boom.type = "sine";
-  boom.frequency.setValueAtTime(150, t);
-  boom.frequency.exponentialRampToValueAtTime(38, t + 0.22);
-  const boomEnv = ctx.createGain();
-  boomEnv.gain.setValueAtTime(0.0001, t);
-  boomEnv.gain.exponentialRampToValueAtTime(1.1, t + 0.004);
-  boomEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-  boom.connect(boomEnv).connect(out);
-  boom.start(t);
-  boom.stop(t + 0.32);
-  nodes?.push(crack, blast, boom);
+function synthGunshot(ctx: AudioContext, t: number, out: AudioNode, nodes?: AudioScheduledSourceNode[]): void {
+  const src = ctx.createBufferSource();
+  src.buffer = renderGunshot(ctx);
+  src.playbackRate.setValueAtTime(0.96 + Math.random() * 0.06, t);
+  src.connect(out);
+  src.start(t);
+  nodes?.push(src);
 }
 
 /**
@@ -431,7 +456,7 @@ function synthGunshot(ctx: AudioContext, t: number, out: AudioNode, nodes?: Audi
  * work: no third-party audio.
  */
 export function playGunshotAt(ctx: AudioContext, at: number, level: number, nodes?: AudioScheduledSourceNode[]): void {
-  const out = hitBus(ctx, at, 0.9 * level, gunshotSample ? 0.15 : 0.35);
+  const out = hitBus(ctx, at, 0.95 * level, gunshotSample ? 0.15 : 0.28);
   if (gunshotSample) {
     const src = ctx.createBufferSource();
     src.buffer = gunshotSample;
@@ -443,9 +468,9 @@ export function playGunshotAt(ctx: AudioContext, at: number, level: number, node
   synthGunshot(ctx, at, out, nodes);
 }
 
-/** Immediate gunshot (kept for any caller that just wants the bang now). */
+/** The Mafia's shot, heard by the whole room the moment their turn ends. */
 export function playMafiaKill(): void {
-  withAudio((ctx, now, level) => playGunshotAt(ctx, now, level));
+  withAudio((ctx, now, level) => playGunshotAt(ctx, now, Math.max(0.5, level)));
 }
 
 /** Day vote-out: a deep, heavy impact — distinct from the Mafia's gunshot. */

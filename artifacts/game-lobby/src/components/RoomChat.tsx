@@ -24,7 +24,8 @@ type Props = {
   myName: string;
   messages: ChatMessage[];
   mode: ChatMode;
-  onSend: (text: string) => void;
+  /** Resolves with ok:false and a reason when the server didn't take the message. */
+  onSend: (text: string) => Promise<{ ok: boolean; message?: string }>;
   onReport: (id: string) => void;
   onBlock: (name: string) => void;
 };
@@ -41,8 +42,10 @@ export default function RoomChat({
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [menuForId, setMenuForId] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
-  const prevLenRef = useRef(messages.length);
+  /** Ids already counted, so a burst of messages in one render is never missed. */
+  const seenIdsRef = useRef<Set<string>>(new Set(messages.map((m) => m.id)));
   const openRef = useRef(open);
   openRef.current = open;
 
@@ -53,17 +56,33 @@ export default function RoomChat({
   }, [messages, open]);
 
   useEffect(() => {
-    const prev = prevLenRef.current;
-    const next = messages.length;
-    prevLenRef.current = next;
-    // Only react to a single append (live message), not bulk history replace
-    if (next !== prev + 1) return;
-    const newest = messages[next - 1];
-    if (!newest || newest.name === myName) return;
-    if (openRef.current) return;
-    setUnread((n) => n + 1);
+    const seen = seenIdsRef.current;
+    // A history replace (rejoin) re-sends old messages; count only new ids,
+    // and only live ones (history arrives as a bulk, before any are seen).
+    const fresh = messages.filter((m) => !seen.has(m.id));
+    const isBulk = seen.size === 0 && fresh.length > 1;
+    for (const m of fresh) seen.add(m.id);
+    if (messages.length === 0) seen.clear();
+    if (isBulk) return;
+    const fromOthers = fresh.filter((m) => m.name !== myName).length;
+    if (fromOthers === 0 || openRef.current) return;
+    setUnread((n) => n + fromOthers);
     playChatPing();
   }, [messages, myName]);
+
+  async function submit() {
+    const text = draft.trim();
+    if (!text) return;
+    // Clear at once so the player can keep typing; if the server refuses the
+    // message, put it back (in front of anything typed since) to resend.
+    setDraft("");
+    setSendError(null);
+    const result = await onSend(text);
+    if (!result.ok) {
+      setDraft((current) => (current.trim() ? `${text} ${current}` : text));
+      setSendError(result.message ?? "Message not sent. Try again.");
+    }
+  }
 
   function openPanel() {
     setOpen(true);
@@ -95,7 +114,7 @@ export default function RoomChat({
           </div>
           <div
             ref={listRef}
-            className="max-h-40 overflow-y-auto rounded-xl bg-black/30 border border-white/5 px-3 py-2 flex flex-col gap-2"
+            className="max-h-[40vh] min-h-24 overflow-y-auto rounded-xl bg-black/30 border border-white/5 px-3 py-2 flex flex-col gap-2"
           >
             {messages.length === 0 ? (
               <p className="text-gray-500 text-xs">No messages yet.</p>
@@ -161,27 +180,32 @@ export default function RoomChat({
               className="mt-2 flex gap-2"
               onSubmit={(event) => {
                 event.preventDefault();
-                const text = draft.trim();
-                if (!text) return;
-                onSend(text);
-                setDraft("");
+                void submit();
               }}
             >
               <input
                 value={draft}
                 maxLength={200}
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  if (sendError) setSendError(null);
+                }}
                 placeholder={MODE_UI[mode].placeholder}
                 className="flex-1 min-h-[40px] px-3 rounded-xl bg-gray-900 border border-gray-700 text-white text-sm"
               />
               <button
                 type="submit"
-                className="min-h-[40px] px-3 rounded-xl btn-gold text-sm font-semibold cursor-pointer"
+                disabled={!draft.trim()}
+                className="min-h-[40px] px-3 rounded-xl btn-gold text-sm font-semibold cursor-pointer disabled:opacity-60"
               >
                 Send
               </button>
             </form>
-          ) : (
+          ) : null}
+          {sendError && mode !== "locked" && (
+            <p role="alert" className="mt-1.5 text-[11px] text-red-300">{sendError}</p>
+          )}
+          {mode !== "locked" ? null : (
             <p className="mt-2 text-center text-[11px] text-gray-500">
               {MODE_UI.locked.note}
             </p>

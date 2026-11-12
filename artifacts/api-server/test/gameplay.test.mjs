@@ -25,6 +25,24 @@ describe("lobby", () => {
     }
   });
 
+  test("when the host leaves, the room closes and everyone goes home", async () => {
+    const t = await seatTable(server);
+    try {
+      const { Mafia, Doctor, Detective, Civilian } = t.sockets;
+      Mafia.emit("leave-game");
+      await waitFor(Mafia, "left-game");
+      for (const s of [Doctor, Detective, Civilian]) {
+        const closed = await waitFor(s, "room-closed");
+        assert.match(closed.message, /host/i);
+      }
+      // The room is gone: its code no longer works.
+      Doctor.emit("join-room", { code: t.code, name: "Doctor" });
+      await waitFor(Doctor, "room-error");
+    } finally {
+      t.closeAll();
+    }
+  });
+
   test("leaving a lobby frees you to create a new room", async () => {
     const t = await seatTable(server);
     try {
@@ -138,7 +156,26 @@ describe("table rules and chat channels", () => {
     }
   });
 
-  test("night chat is Mafia-only, the dead get a ghost channel, and the vote tally is public", async () => {
+  test("chat confirms each message, and a rejected one says why", async () => {
+    const t = await seatTable(server);
+    try {
+      const { Mafia, Doctor } = t.sockets;
+      const reply = await Mafia.timeout(5000).emitWithAck("send-chat", { text: "hello town" });
+      assert.equal(reply.ok, true);
+      const got = await waitFor(Doctor, "chat-message", (m) => m.text === "hello town");
+      assert.equal(got.id, reply.id);
+      // Too fast after the last one: refused through the ack, not lost silently.
+      const tooFast = await Mafia.timeout(5000).emitWithAck("send-chat", { text: "again" });
+      assert.equal(tooFast.ok, false);
+      assert.match(tooFast.message, /moment/i);
+      await sleep(800);
+      assert.equal((await Mafia.timeout(5000).emitWithAck("send-chat", { text: "again" })).ok, true);
+    } finally {
+      t.closeAll();
+    }
+  });
+
+  test("night chat is Mafia-only, the dead get a ghost channel, and the vote tally is secret", async () => {
     const t = await seatTable(server);
     const { Mafia, Doctor, Detective, Civilian } = t.sockets;
     const all = [Mafia, Doctor, Detective, Civilian];
@@ -159,15 +196,17 @@ describe("table rules and chat channels", () => {
 
       // Mafia kills the Civilian; Doctor saves themself; Detective checks the Mafia.
       Mafia.emit("night-vote", { targetId: Civilian.id });
-      await waitFor(Doctor, "game-phase", (d) => d.phase === "night-doctor");
-      // No sound reaches anyone when the Mafia pick (it used to tip off the town).
-      for (const s of all) assert.equal(received(s, "mafia-kill-sound").length, 0);
+      // When the Mafia's turn ends, everyone (not just the Mafia) is told to play the shot.
+      for (const s of all) {
+        const doctorTurn = await waitFor(s, "game-phase", (d) => d.phase === "night-doctor");
+        assert.equal(doctorTurn.shot, true);
+      }
       Doctor.emit("doctor-protect", { targetId: Doctor.id });
       await waitFor(Detective, "game-phase", (d) => d.phase === "night-detective");
       Detective.emit("detective-investigate", { targetId: Mafia.id });
       const summary = await waitFor(Civilian, "night-summary");
       assert.equal(summary.attacked, true);
-      assert.equal(summary.victimName, "Civilian", "report names the victim so the gunshot lands on it");
+      assert.equal(summary.victimName, "Civilian");
       assert.ok(summary.lines.some((l) => l.includes("Civilian")));
 
       // The dead Civilian talks in ghost chat; the living don't see it.
@@ -186,9 +225,9 @@ describe("table rules and chat channels", () => {
       Detective.emit("day-vote", { targetId: Mafia.id });
       const result = await waitFor(Doctor, "day-result");
       assert.equal(result.eliminatedName, "Mafia");
-      const byVoter = Object.fromEntries(result.tally.map((e) => [e.voter, e.target]));
-      assert.deepEqual(byVoter, { Mafia: "skip", Doctor: "Mafia", Detective: "Mafia" });
-      assert.ok(!("Civilian" in byVoter), "the dead don't appear in the tally");
+      // Totals only: nobody learns who voted for whom.
+      assert.deepEqual(result.tally, [{ target: "Mafia", votes: 2 }, { target: "skip", votes: 1 }]);
+      assert.ok(result.tally.every((row) => !("voter" in row)), "voter names are never sent");
 
       // The Mafia are gone: town wins, and each player's profile tells their story.
       await waitFor(Doctor, "game-over");
