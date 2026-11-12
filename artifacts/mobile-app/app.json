@@ -4,6 +4,10 @@
     "slug": "mafia-town",
     "scheme": "mafiatown",
     "version": "1.0.0",
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",

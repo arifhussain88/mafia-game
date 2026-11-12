@@ -20,7 +20,7 @@ import MatchTicker from "@/components/MatchTicker";
 import RoomChat, { type ChatMode, type ChatMessage } from "@/components/RoomChat";
 import { useBackHandler } from "@/lib/native-bridge";
 import { clearInviteCode } from "@/lib/invite";
-import { playNightSting, playDayChime, playTargetLocked, preloadGunshot, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
+import { playNightSting, playDayChime, playMafiaKill, playTargetLocked, preloadGunshot, startAmbientLoop, stopAmbientLoop, unlockAudio, isMuted } from "@/lib/audio";
 
 export type Role = "mafia" | "civilian" | "doctor" | "detective";
 
@@ -435,7 +435,9 @@ export default function App() {
 
     socket.on(
       "game-phase",
-      (data: { phase: GamePhase; endsAt: number; players: Player[]; votes?: Record<string, number>; narration?: string }) => {
+      (data: { phase: GamePhase; endsAt: number; players: Player[]; votes?: Record<string, number>; narration?: string; shot?: boolean }) => {
+        // The Mafia's hit lands as their turn ends: the whole room hears it at once.
+        if (data.phase === "night-doctor" && data.shot) playMafiaKill();
         setPhase(data.phase);
         setPlayers(data.players);
         setTimerEndsAt(data.endsAt);
@@ -544,6 +546,11 @@ export default function App() {
       resetToHome();
     });
 
+    socket.on("room-closed", (data: { message?: string }) => {
+      resetToHome();
+      toast({ title: "Room closed", description: data?.message ?? "The host left, so the room was closed." });
+    });
+
     socket.on(
       "day-result",
       (data: { eliminatedId: string | null; eliminatedName: string | null; skipped: boolean; tally?: VoteTallyEntry[]; players: Player[] }) => {
@@ -621,7 +628,18 @@ export default function App() {
       return id;
     });
   }, []);
-  const sendChat            = useCallback((text: string) => { socketRef.current?.emit("send-chat", { text }); }, []);
+  /** Resolves once the server accepted the message, or with the reason it didn't. */
+  const sendChat            = useCallback((text: string) => new Promise<{ ok: boolean; message?: string }>((resolve) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      resolve({ ok: false, message: "You're offline. Your message will be kept until you reconnect." });
+      return;
+    }
+    socket.timeout(8000).emit("send-chat", { text }, (err: Error | null, reply?: { ok: boolean; message?: string }) => {
+      if (err) resolve({ ok: false, message: "Message not sent. Check your connection and try again." });
+      else resolve(reply ?? { ok: true });
+    });
+  }), []);
   const reportChat          = useCallback((id: string) => {
     socketRef.current?.emit("report-chat", { id });
     toast({ title: "Reported", description: "Thanks — we'll review this message." });
@@ -735,7 +753,7 @@ export default function App() {
       )}
 
       {phase === "night-summary" && (
-        <NightSummary lines={nightSummaryLines} shot={nightShot} />
+        <NightSummary lines={nightSummaryLines} />
       )}
 
       {phase === "day-result" && elimInfo && (

@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { playVoteOutImpact } from "@/lib/audio";
 
-export type VoteTallyEntry = { voter: string; target: string | null };
+/** Votes per choice: a player's name, "skip", or null for "didn't vote". Who voted is secret. */
+export type VoteTallyEntry = { target: string | null; votes: number };
 
 type Props = {
   eliminatedName: string | null;
@@ -10,29 +11,39 @@ type Props = {
 };
 
 function VoteTally({ tally, eliminatedName }: { tally: VoteTallyEntry[]; eliminatedName: string | null }) {
-  if (tally.length === 0) return null;
+  // Older servers sent one row per voter; ignore that shape rather than show names.
+  const rows = tally.filter((row) => typeof row.votes === "number" && row.votes > 0);
+  if (rows.length === 0) return null;
+  const total = rows.reduce((sum, row) => sum + row.votes, 0);
   return (
     <div className="mt-6 text-left">
       <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-gray-500">How the town voted</p>
-      <ul className="flex flex-col divide-y divide-white/5 rounded-xl bg-black/30 ring-1 ring-white/10">
-        {tally.map(({ voter, target }) => {
-          const label = target === null ? "didn't vote" : target === "skip" ? "skipped" : target;
+      <ul className="flex flex-col gap-2 rounded-xl bg-black/30 px-3 py-3 ring-1 ring-white/10">
+        {rows.map(({ target, votes }) => {
+          const label = target === null ? "Didn't vote" : target === "skip" ? "Skipped" : target;
           const hit = target !== null && target === eliminatedName;
+          const muted = target === null || target === "skip";
           return (
-            <li key={voter} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-              <span className="truncate text-gray-200">{voter}</span>
-              <span
-                className={`truncate ${
-                  hit ? "text-red-300 font-semibold" : target === null || target === "skip" ? "text-gray-500 italic" : "text-amber-200"
-                }`}
-              >
-                {target !== null && target !== "skip" && <span className="text-gray-600">→ </span>}
-                {label}
-              </span>
+            <li key={target ?? "none"} className="text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className={`truncate ${hit ? "font-semibold text-red-300" : muted ? "italic text-gray-500" : "text-amber-100"}`}>
+                  {label}
+                </span>
+                <span className="shrink-0 font-mono tabular-nums text-gray-400">
+                  {votes} vote{votes === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/5">
+                <div
+                  className={`h-full rounded-full ${hit ? "bg-red-400/80" : muted ? "bg-gray-600" : "bar-gold"}`}
+                  style={{ width: `${Math.round((votes / total) * 100)}%` }}
+                />
+              </div>
             </li>
           );
         })}
       </ul>
+      <p className="mt-2 text-[11px] text-gray-600">Votes are secret. Only the totals are shown.</p>
     </div>
   );
 }

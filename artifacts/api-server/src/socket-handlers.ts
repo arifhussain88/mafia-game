@@ -82,7 +82,7 @@ function dayVoteMs(room: Room): number {
 }
 
 // Must match NightSummary.tsx animation constants (include START_DELAY_MS there)
-const TYPEWRITER_CHAR_DELAY = 42;
+const TYPEWRITER_CHAR_DELAY = 56;
 const TYPEWRITER_LINE_PAUSE = 1000;
 const TYPEWRITER_START_DELAY = 280;
 const NIGHT_SUMMARY_EXTRA_PAUSE = 3000;
@@ -106,7 +106,7 @@ const MAX_SOCKETS = envInt("MAX_SOCKETS", 400);
 const MAX_OPEN_ROOMS = envInt("MAX_OPEN_ROOMS", 150);
 /** Generous so a party on one Wi-Fi / carrier NAT can all play. */
 const MAX_SOCKETS_PER_IP = envInt("MAX_SOCKETS_PER_IP", 30);
-const CHAT_COOLDOWN_MS = 1500;
+const CHAT_COOLDOWN_MS = 700;
 const EMPTY_LOBBY_TTL_MS = 5 * 60 * 1000;
 const ROOM_GC_INTERVAL_MS = 60 * 1000;
 /** How long a lobby seat survives a network blip before it is released. */
@@ -193,6 +193,9 @@ function visibleChat(room: Room, viewer: Player): ChatMessage[] {
   return room.chatMessages.filter((m) => canSeeChat(room, viewer, m));
 }
 
+/** One line of the day-vote result: a player's name, "skip", or null for "didn't vote". */
+type VoteTallyEntry = { target: string | null; votes: number };
+
 interface Room {
   code: string;
   players: Map<string, Player>;
@@ -224,7 +227,8 @@ interface Room {
     eliminatedId: string | null;
     eliminatedName: string | null;
     skipped: boolean;
-    tally: { voter: string; target: string | null }[];
+    /** Votes per choice, without who cast them (the ballot is secret). */
+    tally: VoteTallyEntry[];
   } | null;
   detectiveResult: { detectiveId: string; targetName: string; isMafia: boolean } | null;
   winner: Winner | null;
@@ -681,10 +685,13 @@ function startNightDoctor(io: Server, code: string) {
   const endsAt = Date.now() + duration;
   room.timerEndsAt = endsAt;
 
+  // The Mafia have chosen: everyone hears the shot now, as the hit happens.
+  // Whether the Doctor saves the victim is only revealed in the morning.
   io.to(code).emit("game-phase", {
     phase: "night-doctor",
     endsAt,
     players: serializePlayers(room.players),
+    shot: room.nightVotes.size > 0,
   });
 
   room.timer = setTimeout(() => startNightDetective(io, code), duration);
@@ -774,8 +781,6 @@ function resolveNight(io: Server, code: string) {
 
   const lines = buildNightSummaryLines(mafiaTargetId, eliminatedName, wasProtected);
   room.nightSummaryLines = lines;
-  // The client fires the gunshot on the exact character of the victim's name
-  // (or of "attacked" when the Doctor saved them), in sync with the typing.
   room.nightShot = { attacked: mafiaTargetId !== null, victimName: eliminatedName };
   room.nightHadDeath = eliminatedName !== null;
 
@@ -879,14 +884,17 @@ function resolveDay(io: Server, code: string) {
     skipped = true;
   }
 
-  // Public tally: every living voter and their choice (null = didn't vote).
-  const tally = living(room).map((voter) => {
+  // Public tally: how many votes each choice got, never who cast them.
+  const tallyCounts = new Map<string | null, number>();
+  for (const voter of living(room)) {
     const choice = room.dayVotes.get(voter.id);
-    return {
-      voter: voter.name,
-      target: choice === undefined ? null : choice === SKIP_VOTE ? SKIP_VOTE : room.players.get(choice)?.name ?? null,
-    };
-  });
+    const target = choice === undefined ? null : choice === SKIP_VOTE ? SKIP_VOTE : room.players.get(choice)?.name ?? null;
+    tallyCounts.set(target, (tallyCounts.get(target) ?? 0) + 1);
+  }
+  const rank = (target: string | null) => (target === null ? 2 : target === SKIP_VOTE ? 1 : 0);
+  const tally: VoteTallyEntry[] = Array.from(tallyCounts, ([target, votes]) => ({ target, votes })).sort(
+    (a, b) => rank(a.target) - rank(b.target) || b.votes - a.votes,
+  );
 
   let eliminatedName: string | null = null;
 
@@ -1057,12 +1065,23 @@ function removeLobbySeat(io: Server, code: string, room: Room, seat: Player) {
     destroyRoom(code, room);
     return;
   }
+  // The host owns the room: when they leave, it closes for everyone.
   if (seat.isHost) {
-    const next =
-      Array.from(room.players.values()).find((p) => p.connected) ?? room.players.values().next().value!;
-    next.isHost = true;
+    closeRoom(io, code, room, `${seat.name} (the host) left, so the room was closed.`);
+    return;
   }
   emitPlayersUpdated(io, code, room);
+}
+
+/** Send everyone in the room back to Home and remove it. Only outside a live match. */
+function closeRoom(io: Server, code: string, room: Room, message: string) {
+  io.to(code).emit("room-closed", { message });
+  for (const player of room.players.values()) {
+    const s = io.sockets.sockets.get(player.id);
+    if (s) void s.leave(code);
+  }
+  destroyRoom(code, room);
+  logger.info({ code }, "Room closed by host");
 }
 
 /**
@@ -1344,10 +1363,10 @@ export function registerSocketHandlers(io: Server) {
 
     /** One bad payload or bug in a handler must never crash the process. */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const on = (event: string, handler: (data?: any) => void) => {
-      socket.on(event, (data?: unknown) => {
+    const on = (event: string, handler: (data?: any, ack?: (reply: unknown) => void) => void) => {
+      socket.on(event, (data?: unknown, ack?: unknown) => {
         try {
-          handler(data);
+          handler(data, typeof ack === "function" ? (ack as (reply: unknown) => void) : undefined);
         } catch (err) {
           logger.error({ err, event, socketId: socket.id }, "Socket handler failed");
         }
@@ -1575,28 +1594,34 @@ export function registerSocketHandlers(io: Server) {
       }
     });
 
-    on("send-chat", (data: { text?: string }) => {
+    on("send-chat", (data: { text?: string }, ack?: (reply: unknown) => void) => {
+      // Reply through the ack when the client asked for one (it then keeps the
+      // draft on failure); older clients get the error toast instead.
+      const fail = (message: string) => {
+        if (ack) ack({ ok: false, message });
+        else socket.emit("room-error", { message });
+      };
       for (const [code, room] of rooms.entries()) {
         const player = room.players.get(socket.id);
         if (!player) continue;
         if (!player.connected) {
-          socket.emit("room-error", { message: "Reconnect to send chat." });
+          fail("Reconnect to send chat.");
           return;
         }
         const channel = chatChannelFor(room, player);
         if (typeof channel !== "string") {
-          socket.emit("room-error", { message: channel.error });
+          fail(channel.error);
           return;
         }
         const text = str(data?.text);
         if (!text || text.length > 200) {
-          socket.emit("room-error", { message: "Message must be 1 to 200 characters." });
+          fail("Message must be 1 to 200 characters.");
           return;
         }
         const now = Date.now();
         const lastAt = room.lastChatAt.get(player.id) ?? 0;
         if (now - lastAt < CHAT_COOLDOWN_MS) {
-          socket.emit("room-error", { message: "Wait a moment before sending again." });
+          fail("Wait a moment before sending again.");
           return;
         }
         room.lastChatAt.set(player.id, now);
@@ -1605,6 +1630,7 @@ export function registerSocketHandlers(io: Server) {
         room.chatAuthors.set(message.id, player.userId);
         room.chatMessages.push(message);
         emitChatMessage(io, room, message);
+        ack?.({ ok: true, id: message.id });
         persistChatMessage({
           roomCode: code,
           userId: player.userId,
@@ -1614,6 +1640,7 @@ export function registerSocketHandlers(io: Server) {
         logger.info({ code, name: player.name }, "Chat message");
         return;
       }
+      fail("You're not in a room.");
     });
 
     on("leave-game", () => {
@@ -1629,6 +1656,12 @@ export function registerSocketHandlers(io: Server) {
           return;
         }
         if (room.phase === "game-over") {
+          if (player.isHost) {
+            void socket.leave(code);
+            socket.emit("left-game");
+            closeRoom(io, code, room, `${player.name} (the host) left, so the room was closed.`);
+            return;
+          }
           player.connected = false;
           rebindSeat(room, player, `left:${socket.id}`);
           transferHost(room);

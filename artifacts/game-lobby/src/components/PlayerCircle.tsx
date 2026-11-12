@@ -49,7 +49,18 @@ const FELLOW_SHADOW = "0 0 10px rgba(239,68,68,0.3)";
 const FELLOW_BORDER = "#991b1b";
 
 const BASE_SIZE = 300;
-const STACK_CARD_W = 100;
+
+/**
+ * Phone layout: a grid that fits the whole table on one screen. Up to 4
+ * players get 2 big columns; more get 3, then 4 columns of smaller cards.
+ */
+function gridLayout(N: number, width: number): { cols: number; cardW: number } {
+  const cols = N <= 4 ? 2 : N <= 9 ? 3 : 4;
+  const gap = 12;
+  const usable = Math.min(width, 420) - 24;
+  const maxW = cols === 2 ? 112 : cols === 3 ? 92 : 72;
+  return { cols, cardW: Math.max(56, Math.min(maxW, Math.floor((usable - gap * (cols - 1)) / cols))) };
+}
 
 type SeatMetrics = {
   cardW: number;
@@ -287,11 +298,13 @@ export default function PlayerCircle({
   const useStack = isNarrow;
 
   if (useStack) {
-    const scale = STACK_CARD_W / 60;
+    const viewport = typeof window === "undefined" ? 360 : window.innerWidth;
+    const { cols, cardW } = gridLayout(N, viewport);
+    const scale = cardW / 60;
     const metrics: SeatMetrics = {
-      cardW: STACK_CARD_W,
-      cardH: Math.round(STACK_CARD_W * (168 / 120)),
-      nameFontSize: 12,
+      cardW,
+      cardH: Math.round(cardW * (168 / 120)),
+      nameFontSize: cardW >= 90 ? 12 : 11,
       offlineFontSize: 10,
       badgeSize: 18,
       badgeFontSize: 10,
@@ -299,13 +312,16 @@ export default function PlayerCircle({
       scale,
     };
 
+    // Me first, then everyone else in seat order, so my card is always top-left.
+    const ordered = [...players].sort((a, b) => Number(b.id === mySocketId) - Number(a.id === mySocketId));
+
     return (
       <div
-        className="w-full max-w-sm flex flex-col items-center gap-4 overflow-y-auto select-none px-2"
-        style={{ maxHeight: "58vh" }}
+        className="w-full max-w-md grid justify-center justify-items-center gap-x-3 gap-y-3 overflow-y-auto select-none px-3 py-1"
+        style={{ gridTemplateColumns: `repeat(${cols}, ${cardW}px)`, maxHeight: "62vh" }}
         aria-label="Players"
       >
-        {players.map((player) => (
+        {ordered.map((player) => (
           <PlayerSeat
             key={player.id}
             player={player}
